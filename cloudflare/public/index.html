@@ -102,6 +102,7 @@
     .setup-form { display: grid; gap: 14px; }
     .form-block { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 12px; background: #fff; }
     .form-block h3 { margin: 0; font-size: 14px; line-height: 1.2; }
+    .form-block.subtle { background: #fffdf2; border-color: #f4e4a3; }
     .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
     .field { display: grid; gap: 6px; min-width: 0; }
     .field label { color: var(--muted); font-size: 12px; line-height: 1.25; }
@@ -138,6 +139,12 @@
     .preview-row span { color: var(--muted); font-size: 12px; }
     .preview-row strong { font-size: 15px; text-align: right; }
     .plain-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    .rule-list { display: grid; gap: 9px; }
+    .rule { display: grid; gap: 3px; padding: 0 0 10px; border-bottom: 1px solid var(--line); }
+    .rule:last-child { border-bottom: 0; padding-bottom: 0; }
+    .rule strong { font-size: 13px; }
+    .rule p { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .mode-fields[hidden] { display: none; }
     .mobile-cards { display: none; }
     .history-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; background: #fff; }
     .history-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -862,12 +869,11 @@
                 <h3>2. 仓位跟随模式</h3>
                 <div class="segmented">
                   <button type="button" class="active" data-follow-mode="proportional">等比例跟单</button>
-                  <button type="button" data-follow-mode="fixed">固定每次下单金额</button>
+                  <button type="button" data-follow-mode="fixed">同等价值跟单</button>
                 </div>
-                <p class="plain-note">等比例跟单会按你的资金和带单员保证金比例缩放仓位；固定每次下单金额则每次新开仓都用同一笔 USDT 预算。</p>
-                <div class="field-grid">
-                  <div class="field"><label for="simFixedNotional">固定每次下单金额 USDT</label><input id="simFixedNotional" type="number" min="1" step="10" value="100" /></div>
-                  <div class="field"><label for="simMaxOrderNotional">单笔最大跟单金额 USDT，0 为不限</label><input id="simMaxOrderNotional" type="number" min="0" step="10" value="0" /></div>
+                <p class="plain-note" id="followModeNote">按你的资金与带单员保证金比例缩放仓位，适合想尽量贴近交易员仓位结构的模拟。</p>
+                <div class="field-grid mode-fields" id="fixedModeFields" hidden>
+                  <div class="field"><label for="simFixedNotional">每次新开仓金额 USDT</label><input id="simFixedNotional" type="number" min="1" step="10" value="100" /></div>
                 </div>
                 <div class="switch-row">
                   <div><strong>只跟新开仓</strong><span>启动前已经存在的仓位视为错过信号，不按现价补追。</span></div>
@@ -880,6 +886,7 @@
                 <div class="field-grid">
                   <div class="field"><label for="simMaxLeverage">账户最大杠杆</label><input id="simMaxLeverage" type="number" min="0" step="0.5" value="10" /></div>
                   <div class="field"><label for="simMaxSlippage">最大滑点 %</label><input id="simMaxSlippage" type="number" min="0" step="0.1" value="0.5" /></div>
+                  <div class="field"><label for="simMaxOrderNotional">单笔最大跟单金额 USDT，0 为不限</label><input id="simMaxOrderNotional" type="number" min="0" step="10" value="0" /></div>
                 </div>
               </div>
 
@@ -914,9 +921,12 @@
                 <div class="preview-row"><span>启动规则</span><strong>只跟新开仓</strong></div>
                 <div class="preview-row"><span>数据来源</span><strong>Binance 公开订单</strong></div>
               </div>
-              <div class="record-list">
-                <article class="record"><div><strong>不补追旧仓</strong><p>启动前已经存在的仓位会视为错过信号，模拟账户只处理启动后的新信号。</p></div></article>
-                <article class="record"><div><strong>纸面模拟</strong><p>模拟账户只在本浏览器里记录结果，不连接交易所，也不会触发真实交易。</p></div></article>
+              <div class="form-block subtle">
+                <h3>执行规则</h3>
+                <div class="rule-list">
+                  <div class="rule"><strong>不补追旧仓</strong><p>启动前已有仓位会视为错过信号，只处理启动后的新信号。</p></div>
+                  <div class="rule"><strong>纸面模拟</strong><p>结果记录在本浏览器中，不连接交易所，也不会触发真实交易。</p></div>
+                </div>
               </div>
               <button class="btn primary" id="startSim">保存并启动模拟</button>
             </div>
@@ -985,12 +995,10 @@
     }
 
     function bindSimulatorSetup() {
-      $("[data-follow-mode='fixed']")?.addEventListener("click", () => {
-        $$("[data-follow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.followMode === "fixed"));
+      $$("[data-follow-mode]").forEach((button) => {
+        button.addEventListener("click", () => setFollowMode(button.dataset.followMode));
       });
-      $("[data-follow-mode='proportional']")?.addEventListener("click", () => {
-        $$("[data-follow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.followMode === "proportional"));
-      });
+      setFollowMode("proportional");
       bindRangeLabel("simAccountTakeProfit");
       bindRangeLabel("simAccountStopLoss");
       bindRangeLabel("simMaxDrawdown");
@@ -998,6 +1006,18 @@
       bindRangeLabel("simPositionStopLoss");
       bindRangeLabel("simTrailingStop");
       $("#startSim")?.addEventListener("click", startSimulation);
+    }
+
+    function setFollowMode(mode) {
+      $$("[data-follow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.followMode === mode));
+      const fixedFields = $("#fixedModeFields");
+      if (fixedFields) fixedFields.hidden = mode !== "fixed";
+      const note = $("#followModeNote");
+      if (note) {
+        note.textContent = mode === "fixed"
+          ? "每次新开仓都使用相同的 USDT 预算，适合不想跟随交易员仓位大小波动的模拟。"
+          : "按你的资金与带单员保证金比例缩放仓位，适合想尽量贴近交易员仓位结构的模拟。";
+      }
     }
 
     function bindRangeLabel(id) {
