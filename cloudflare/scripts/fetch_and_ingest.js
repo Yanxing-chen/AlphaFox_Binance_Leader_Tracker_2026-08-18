@@ -408,7 +408,7 @@ async function buildSnapshot(trader, detail, orders) {
       markPrice = position.avgPrice;
     }
     const absQty = Math.abs(position.qty);
-    const side = position.qty > 0 ? "LONG" : "SHORT";
+    const side = position.side || (position.qty > 0 ? "LONG" : "SHORT");
     const notional = absQty * markPrice;
     const unrealizedPnl = side === "LONG"
       ? (markPrice - position.avgPrice) * absQty
@@ -498,35 +498,46 @@ function applyOrder(position, order) {
 }
 
 function buildRecentOpenPositionSeeds(sorted) {
-  const latestCloseByKey = new Map();
+  const positionsByKey = new Map();
   for (const order of sorted) {
     const symbol = String(order.symbol || "").toUpperCase();
     const positionSide = String(order.positionSide || "").toUpperCase();
     if (!symbol || !positionSide) continue;
     const key = `${symbol}|${positionSide}`;
-    if (!isOpenOrder(order)) latestCloseByKey.set(key, orderTimestamp(order));
-  }
-  const positionsByKey = new Map();
-  for (const order of sorted) {
-    const symbol = String(order.symbol || "").toUpperCase();
-    const positionSide = String(order.positionSide || "").toUpperCase();
-    if (!symbol || !positionSide || !isOpenOrder(order)) continue;
-    const key = `${symbol}|${positionSide}`;
-    const cutoff = latestCloseByKey.get(key) || 0;
-    if (orderTimestamp(order) <= cutoff) continue;
-    if (!positionsByKey.has(key)) {
-      positionsByKey.set(key, {
-        symbol,
-        baseAsset: order.baseAsset || symbol.replace(/USDT$/, ""),
-        side: positionSide,
-        qty: 0,
-        avgPrice: 0,
-        realizedPnl: 0,
-        orderCount: 0,
-        lastOrderTime: 0
-      });
+    const qty = orderQty(order);
+    const price = orderPrice(order);
+    const timestamp = orderTimestamp(order);
+    if (isOpenOrder(order)) {
+      if (!positionsByKey.has(key)) {
+        positionsByKey.set(key, {
+          symbol,
+          baseAsset: order.baseAsset || symbol.replace(/USDT$/, ""),
+          side: positionSide,
+          qty: 0,
+          avgPrice: 0,
+          realizedPnl: 0,
+          orderCount: 0,
+          lastOrderTime: 0
+        });
+      }
+      const position = positionsByKey.get(key);
+      const nextQty = position.qty + qty;
+      position.avgPrice = nextQty > 0 ? ((position.avgPrice * position.qty) + (price * qty)) / nextQty : price;
+      position.qty = nextQty;
+      position.orderCount += 1;
+      position.lastOrderTime = Math.max(position.lastOrderTime || 0, timestamp);
+      continue;
     }
-    applyOrder(positionsByKey.get(key), order);
+
+    const position = positionsByKey.get(key);
+    if (!position) continue;
+    position.qty = Math.max(0, position.qty - qty);
+    position.realizedPnl += toNumber(order.totalPnl);
+    position.orderCount += 1;
+    position.lastOrderTime = Math.max(position.lastOrderTime || 0, timestamp);
+    if (position.qty <= 1e-8) {
+      positionsByKey.delete(key);
+    }
   }
   return Array.from(positionsByKey.values()).filter((position) => Math.abs(position.qty) > 1e-8);
 }
@@ -553,26 +564,41 @@ function buildClosedPositionHistory(sorted) {
       if (!leg.openTime) leg.openTime = timestamp;
       continue;
     }
-    leg.realizedPnl += toNumber(order.totalPnl);
-    leg.closeQty += qty;
-    leg.closeValue += qty * price;
-    leg.qty = Math.max(0, leg.qty - qty);
+
+    const beforeQty = leg.qty;
+    const hasOpenBasis = beforeQty > 1e-8;
+    const closedQty = hasOpenBasis ? Math.min(qty, beforeQty) : qty;
+    const remainingQty = hasOpenBasis ? Math.max(0, beforeQty - qty) : 0;
+    const realizedPnl = toNumber(order.totalPnl);
+    const status = !hasOpenBasis
+      ? "平仓记录"
+      : remainingQty > 1e-8
+        ? "部分平仓"
+        : "完全平仓";
+
+    history.push({
+      symbol: leg.symbol,
+      baseAsset: leg.baseAsset,
+      side: leg.positionSide,
+      status,
+      realizedPnl,
+      openPrice: leg.avgPrice || price,
+      closeAvgPrice: price,
+      closedQty,
+      remainingQty,
+      maxQty: leg.maxQty || beforeQty || closedQty,
+      openTime: leg.openTime || timestamp,
+      closeTime: timestamp,
+      orderCount: leg.orderCount,
+      hasOpenBasis
+    });
+
+    leg.realizedPnl += realizedPnl;
+    leg.closeQty += closedQty;
+    leg.closeValue += closedQty * price;
+    leg.qty = remainingQty;
     leg.closeTime = timestamp;
     if (leg.qty <= 1e-8) {
-      history.push({
-        symbol: leg.symbol,
-        baseAsset: leg.baseAsset,
-        side: leg.positionSide,
-        status: "完全平仓",
-        realizedPnl: leg.realizedPnl,
-        openPrice: leg.avgPrice || price,
-        closeAvgPrice: leg.closeQty > 0 ? leg.closeValue / leg.closeQty : price,
-        closedQty: leg.closeQty,
-        maxQty: leg.maxQty || leg.closeQty,
-        openTime: leg.openTime || timestamp,
-        closeTime: leg.closeTime,
-        orderCount: leg.orderCount
-      });
       active.set(key, newLeg(symbol, order.baseAsset, positionSide));
     }
   }

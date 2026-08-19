@@ -75,6 +75,8 @@
     .chip { min-height: 25px; padding: 5px 8px; border-radius: 6px; display: inline-flex; align-items: center; font-size: 12px; line-height: 1; font-weight: 720; background: var(--soft); color: #5d6470; }
     .chip.short { background: var(--red); color: #fff; }
     .chip.long { background: var(--green); color: #fff; }
+    .chip.partial { background: #fff3bf; color: #7a5a00; }
+    .chip.closed { background: #eef1f4; color: #565d67; }
     .position-main { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
     .table-wrap { overflow: auto; }
     table { width: 100%; border-collapse: collapse; min-width: 880px; }
@@ -347,6 +349,8 @@
     function pnlClass(value) { return num(value) >= 0 ? "good" : "bad"; }
     function sideText(side) { return String(side).toUpperCase() === "LONG" ? "多" : "空"; }
     function sideClass(side) { return String(side).toUpperCase() === "LONG" ? "long" : "short"; }
+    function historyStatusClass(status) { return status === "部分平仓" ? "partial" : "closed"; }
+    function remainingQtyText(item) { return num(item.remainingQty) > 0 ? `${trim(item.remainingQty, 4)} ${item.baseAsset}` : "--"; }
     function orderAction(order) {
       const pos = String(order.positionSide || "").toUpperCase();
       const side = String(order.side || "").toUpperCase();
@@ -817,22 +821,22 @@
 
     function renderHistory() {
       const rows = snapshot.closedPositionHistory || [];
-      const tableRows = rows.map((item) => `<tr><td>${item.symbol}</td><td><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></td><td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td><td>${trim(item.closedQty, 4)} ${item.baseAsset}</td><td>${fmt(item.openPrice, 5)}</td><td>${fmt(item.closeAvgPrice, 5)}</td><td>${dt(item.openTime)}</td><td>${dt(item.closeTime)}</td></tr>`).join("");
+      const tableRows = rows.map((item) => `<tr><td>${item.symbol}</td><td><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></td><td><span class="chip ${historyStatusClass(item.status)}">${item.status || "平仓记录"}</span></td><td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td><td>${trim(item.closedQty, 4)} ${item.baseAsset}</td><td>${remainingQtyText(item)}</td><td>${fmt(item.openPrice, 5)}</td><td>${fmt(item.closeAvgPrice, 5)}</td><td>${dt(item.openTime)}</td><td>${dt(item.closeTime)}</td></tr>`).join("");
       const mobileRows = rows.map((item) => `<article class="history-card">
         <div class="history-top">
-          <div><div class="history-symbol">${item.symbol}</div><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></div>
+          <div><div class="history-symbol">${item.symbol}</div><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span> <span class="chip ${historyStatusClass(item.status)}">${item.status || "平仓记录"}</span></div>
           <div class="history-pnl ${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</div>
         </div>
         <div class="history-grid">
           <div class="mini-field"><span>已平仓量</span><strong>${trim(item.closedQty, 4)} ${item.baseAsset}</strong></div>
-          <div class="mini-field"><span>最大持仓量</span><strong>${trim(item.maxQty, 4)} ${item.baseAsset}</strong></div>
+          <div class="mini-field"><span>剩余持仓</span><strong>${remainingQtyText(item)}</strong></div>
           <div class="mini-field"><span>开仓价</span><strong>${fmt(item.openPrice, 5)}</strong></div>
           <div class="mini-field"><span>平仓均价</span><strong>${fmt(item.closeAvgPrice, 5)}</strong></div>
           <div class="mini-field"><span>开仓时间</span><strong>${dt(item.openTime)}</strong></div>
           <div class="mini-field"><span>平仓时间</span><strong>${dt(item.closeTime)}</strong></div>
         </div>
       </article>`).join("");
-      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">已平仓记录，按平仓时间倒序</span></div><div class="table-wrap desktop-table"><table><thead><tr><th>合约</th><th>方向</th><th>平仓盈亏</th><th>已平仓量</th><th>开仓价</th><th>平仓均价</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? tableRows : `<tr><td colspan="8"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div><div class="mobile-cards">${rows.length ? mobileRows : `<div class="empty">暂无仓位历史</div>`}</div></section>`;
+      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">每次平仓都会记录，部分平仓会显示剩余持仓</span></div><div class="table-wrap desktop-table"><table><thead><tr><th>合约</th><th>方向</th><th>状态</th><th>平仓盈亏</th><th>已平仓量</th><th>剩余持仓</th><th>开仓价</th><th>平仓均价</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? tableRows : `<tr><td colspan="10"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div><div class="mobile-cards">${rows.length ? mobileRows : `<div class="empty">暂无仓位历史</div>`}</div></section>`;
     }
 
     function renderRecords() {
