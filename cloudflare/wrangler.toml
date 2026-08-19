@@ -1,0 +1,25 @@
+name = "binance-leader-tracker"
+main = "src/worker.js"
+compatibility_date = "2024-11-18"
+account_id = "a0f41c4f290abe8686c99cded6f07827"
+workers_dev = true
+
+[assets]
+directory = "./public"
+binding = "ASSETS"
+run_worker_first = ["/api/*", "/__scheduled*"]
+
+# Binance blocks Cloudflare Worker egress with HTTP 403.
+# Polling is done by GitHub Actions and posted to /api/ingest instead.
+
+[[d1_databases]]
+binding = "DB"
+database_name = "leader_tracker_db"
+database_id = "b9fda91e-777e-4b88-9372-d49186651a4e"
+
+[vars]
+POLL_CRON = "github-actions */5 * * * *"
+PAGE_SIZE = "100"
+BACKFILL_PAGES = "6"
+BINANCE_WEB_BASE_URL = "https://www.binance.com"
+BINANCE_FAPI_BASE_URL = "https://fapi.binance.com"

@@ -1,0 +1,984 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AlphaFox 代单员隐含仓位追踪台</title>
+  <style>
+    :root {
+      --bg: #f6f7f9;
+      --panel: #ffffff;
+      --ink: #171717;
+      --muted: #767676;
+      --line: #e7e7e7;
+      --soft: #f0f2f5;
+      --amber: #ff9f1a;
+      --amber-weak: #fff1dc;
+      --green: #21b980;
+      --green-weak: #e9f9f2;
+      --red: #ef476f;
+      --red-weak: #fff0f3;
+      --violet: #5e5ce6;
+      --shadow: 0 10px 28px rgba(20, 20, 20, 0.08);
+      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    body {
+      margin: 0;
+      color: var(--ink);
+      background: var(--bg);
+    }
+
+    button,
+    input,
+    textarea,
+    select {
+      font: inherit;
+    }
+
+    button {
+      border: 0;
+      cursor: pointer;
+    }
+
+    .shell {
+      min-height: 100vh;
+      display: grid;
+      grid-template-columns: 320px minmax(0, 1fr);
+    }
+
+    aside {
+      background: var(--panel);
+      border-right: 1px solid var(--line);
+      padding: 22px;
+      position: sticky;
+      top: 0;
+      height: 100vh;
+      overflow: auto;
+    }
+
+    main {
+      padding: 22px;
+      display: grid;
+      gap: 16px;
+      align-content: start;
+    }
+
+    .brand {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 20px;
+    }
+
+    .mark {
+      width: 34px;
+      height: 34px;
+      border-radius: 8px;
+      display: grid;
+      place-items: center;
+      color: #fff;
+      font-weight: 900;
+      background: linear-gradient(135deg, var(--amber), #ff6b35);
+    }
+
+    h1 {
+      font-size: 18px;
+      line-height: 1.2;
+      margin: 0;
+    }
+
+    h2 {
+      margin: 0 0 12px;
+      font-size: 14px;
+      line-height: 1.2;
+    }
+
+    label {
+      display: grid;
+      gap: 6px;
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.25;
+    }
+
+    input,
+    textarea,
+    select {
+      width: 100%;
+      color: var(--ink);
+      background: #fff;
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 10px 11px;
+      outline: none;
+      transition: border-color 0.15s ease, box-shadow 0.15s ease;
+    }
+
+    textarea {
+      min-height: 260px;
+      resize: vertical;
+      line-height: 1.55;
+      font-family: ui-monospace, SFMono-Regular, Consolas, "Liberation Mono", monospace;
+      font-size: 12px;
+    }
+
+    input:focus,
+    textarea:focus,
+    select:focus {
+      border-color: var(--amber);
+      box-shadow: 0 0 0 3px rgba(255, 159, 26, 0.18);
+    }
+
+    .stack {
+      display: grid;
+      gap: 12px;
+    }
+
+    .split {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+    }
+
+    .actions {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    .btn {
+      border-radius: 8px;
+      padding: 10px 13px;
+      font-weight: 700;
+      background: var(--soft);
+      color: var(--ink);
+    }
+
+    .btn.primary {
+      background: var(--amber);
+      color: #fff;
+    }
+
+    .btn.good {
+      background: var(--green);
+      color: #fff;
+    }
+
+    .btn.warn {
+      background: var(--red-weak);
+      color: var(--red);
+    }
+
+    .panel {
+      background: var(--panel);
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      box-shadow: var(--shadow);
+    }
+
+    .panel.pad {
+      padding: 16px;
+    }
+
+    .topbar {
+      display: flex;
+      align-items: flex-start;
+      justify-content: space-between;
+      gap: 16px;
+      padding: 16px;
+    }
+
+    .titlebox {
+      display: grid;
+      gap: 6px;
+    }
+
+    .titlebox .name {
+      font-size: 24px;
+      line-height: 1.1;
+      font-weight: 900;
+    }
+
+    .titlebox .meta {
+      color: var(--muted);
+      font-size: 13px;
+    }
+
+    .badge-row {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+    }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      min-height: 26px;
+      padding: 4px 8px;
+      border-radius: 8px;
+      background: var(--soft);
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 700;
+      white-space: nowrap;
+    }
+
+    .badge.hot {
+      background: var(--amber-weak);
+      color: #c96f00;
+    }
+
+    .badge.short {
+      background: var(--red-weak);
+      color: var(--red);
+    }
+
+    .badge.long {
+      background: var(--green-weak);
+      color: var(--green);
+    }
+
+    .metrics {
+      display: grid;
+      grid-template-columns: repeat(4, minmax(0, 1fr));
+      border-top: 1px solid var(--line);
+    }
+
+    .metric {
+      padding: 16px;
+      border-right: 1px solid var(--line);
+      display: grid;
+      gap: 6px;
+      min-width: 0;
+    }
+
+    .metric:last-child {
+      border-right: 0;
+    }
+
+    .metric .k {
+      color: var(--muted);
+      font-size: 12px;
+    }
+
+    .metric .v {
+      font-size: 22px;
+      font-weight: 900;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    .metric .v.good {
+      color: var(--green);
+    }
+
+    .metric .v.bad {
+      color: var(--red);
+    }
+
+    .grid {
+      display: grid;
+      grid-template-columns: minmax(0, 1.25fr) minmax(360px, 0.75fr);
+      gap: 16px;
+    }
+
+    .table-wrap {
+      overflow: auto;
+    }
+
+    table {
+      border-collapse: collapse;
+      width: 100%;
+      min-width: 760px;
+    }
+
+    th,
+    td {
+      border-bottom: 1px solid var(--line);
+      padding: 12px 14px;
+      text-align: right;
+      vertical-align: middle;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    th:first-child,
+    td:first-child,
+    th:nth-child(2),
+    td:nth-child(2) {
+      text-align: left;
+    }
+
+    th {
+      color: var(--muted);
+      font-size: 12px;
+      font-weight: 800;
+      background: #fbfbfc;
+    }
+
+    tbody tr:hover {
+      background: #fffaf3;
+    }
+
+    .empty {
+      padding: 32px 16px;
+      color: var(--muted);
+      text-align: center;
+    }
+
+    .status {
+      min-height: 20px;
+      color: var(--muted);
+      font-size: 12px;
+      margin-top: 10px;
+    }
+
+    .cards {
+      display: grid;
+      gap: 10px;
+    }
+
+    .position-card {
+      border: 1px solid var(--line);
+      border-radius: 8px;
+      padding: 14px;
+      display: grid;
+      gap: 12px;
+    }
+
+    .position-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 10px;
+    }
+
+    .symbol {
+      font-weight: 900;
+      font-size: 15px;
+    }
+
+    .mini-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+    }
+
+    .mini {
+      background: #f7f8fa;
+      border: 1px solid #eceff3;
+      border-radius: 8px;
+      padding: 10px;
+      display: grid;
+      gap: 5px;
+      min-width: 0;
+    }
+
+    .mini span {
+      color: var(--muted);
+      font-size: 11px;
+    }
+
+    .mini strong {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+      font-size: 13px;
+    }
+
+    .good-text {
+      color: var(--green);
+    }
+
+    .bad-text {
+      color: var(--red);
+    }
+
+    .note {
+      color: var(--muted);
+      font-size: 12px;
+      line-height: 1.45;
+      margin-top: 8px;
+    }
+
+    @media (max-width: 1080px) {
+      .shell {
+        grid-template-columns: 1fr;
+      }
+
+      aside {
+        position: static;
+        height: auto;
+      }
+
+      .grid {
+        grid-template-columns: 1fr;
+      }
+    }
+
+    @media (max-width: 720px) {
+      main,
+      aside {
+        padding: 14px;
+      }
+
+      .topbar {
+        display: grid;
+      }
+
+      .metrics {
+        grid-template-columns: 1fr 1fr;
+      }
+
+      .metric:nth-child(2) {
+        border-right: 0;
+      }
+
+      .metric:nth-child(-n + 2) {
+        border-bottom: 1px solid var(--line);
+      }
+
+      .split {
+        grid-template-columns: 1fr;
+      }
+    }
+  </style>
+</head>
+<body>
+  <div class="shell">
+    <aside>
+      <div class="brand">
+        <div class="mark">AF</div>
+        <div>
+          <h1>隐含仓位追踪台</h1>
+          <div class="note">公开/授权记录重建</div>
+        </div>
+      </div>
+
+      <section class="stack">
+        <label>
+          交易员
+          <input id="traderName" value="熬鹰资本" autocomplete="off" />
+        </label>
+
+        <div class="split">
+          <label>
+            带单余额 USDT
+            <input id="leaderBalance" type="number" step="0.01" value="147923.05" />
+          </label>
+          <label>
+            管理规模 USDT
+            <input id="aum" type="number" step="0.01" value="3544825.12" />
+          </label>
+        </div>
+
+        <label>
+          标记价 JSON
+          <input id="manualMarks" value='{"SNDKUSDT":1724.45}' autocomplete="off" />
+        </label>
+
+        <label>
+          开平仓记录
+          <textarea id="rawTrades" spellcheck="false"></textarea>
+        </label>
+
+        <div class="actions">
+          <button class="btn primary" id="parseBtn">解析记录</button>
+          <button class="btn good" id="markBtn">获取标记价</button>
+          <button class="btn" id="accountBtn">测试个人 API</button>
+          <button class="btn" id="sampleBtn">导入示例</button>
+          <button class="btn warn" id="clearBtn">清空</button>
+        </div>
+        <div id="status" class="status"></div>
+      </section>
+    </aside>
+
+    <main>
+      <section class="panel">
+        <div class="topbar">
+          <div class="titlebox">
+            <div class="name" id="displayName">熬鹰资本</div>
+            <div class="meta" id="displayMeta">Binance · USDT 合约 · 本地推算</div>
+          </div>
+          <div class="badge-row">
+            <span class="badge hot" id="recordCount">0 条记录</span>
+            <span class="badge" id="updatedAt">未更新</span>
+          </div>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="k">净名义价值</div>
+            <div class="v" id="totalNotional">0.00</div>
+          </div>
+          <div class="metric">
+            <div class="k">推算杠杆</div>
+            <div class="v" id="effectiveLev">0.00x</div>
+          </div>
+          <div class="metric">
+            <div class="k">未实现盈亏</div>
+            <div class="v good" id="totalUnrealized">0.00</div>
+          </div>
+          <div class="metric">
+            <div class="k">持仓数</div>
+            <div class="v" id="positionCount">0</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="panel">
+        <div class="topbar">
+          <div class="titlebox">
+            <h2>个人币安 API</h2>
+            <div class="meta" id="apiMeta">未连接本地只读代理</div>
+          </div>
+          <div class="badge-row">
+            <span class="badge" id="apiMode">只读</span>
+          </div>
+        </div>
+        <div class="metrics">
+          <div class="metric">
+            <div class="k">钱包余额</div>
+            <div class="v" id="walletBalance">--</div>
+          </div>
+          <div class="metric">
+            <div class="k">可用余额</div>
+            <div class="v" id="availableBalance">--</div>
+          </div>
+          <div class="metric">
+            <div class="k">账户未实现盈亏</div>
+            <div class="v" id="accountUnrealized">--</div>
+          </div>
+          <div class="metric">
+            <div class="k">账户持仓数</div>
+            <div class="v" id="accountPositions">--</div>
+          </div>
+        </div>
+      </section>
+
+      <section class="grid">
+        <div class="panel">
+          <div class="topbar">
+            <h2>成交流水</h2>
+            <div class="badge-row">
+              <span class="badge" id="realizedSum">已实现 0.00</span>
+            </div>
+          </div>
+          <div class="table-wrap" id="tradeTable"></div>
+        </div>
+
+        <div class="panel pad">
+          <h2>当前推算持仓</h2>
+          <div id="positionCards" class="cards"></div>
+        </div>
+      </section>
+    </main>
+  </div>
+
+  <script>
+    const sampleText = `2026-08-17 22:04 开空
+以均价为1,769.48489开启做空SNDKUSDT USDT仓位，成交数量为39.04SNDK，总价值为69,080.6902969USDT。
+
+2026-08-17 22:04 开空
+以均价为1,767.35316开启做空SNDKUSDT USDT仓位，成交数量为40.19SNDK，总价值为71,029.92329945USDT。
+
+2026-08-17 22:00 开空
+以均价为1,775.40701开启做空SNDKUSDT USDT仓位，成交数量为78.77SNDK，总价值为139,848.81019345USDT。
+
+2026-08-17 10:21 平空
+以均价为1,674.80628关闭做空SNDKUSDT USDT仓位，成交数量为131.83SNDK，总价值为220,789.71149691USDT。已实现盈亏为421.55399949USDT。`;
+
+    const els = {
+      traderName: document.getElementById("traderName"),
+      leaderBalance: document.getElementById("leaderBalance"),
+      aum: document.getElementById("aum"),
+      manualMarks: document.getElementById("manualMarks"),
+      rawTrades: document.getElementById("rawTrades"),
+      parseBtn: document.getElementById("parseBtn"),
+      markBtn: document.getElementById("markBtn"),
+      accountBtn: document.getElementById("accountBtn"),
+      sampleBtn: document.getElementById("sampleBtn"),
+      clearBtn: document.getElementById("clearBtn"),
+      status: document.getElementById("status"),
+      apiMeta: document.getElementById("apiMeta"),
+      apiMode: document.getElementById("apiMode"),
+      walletBalance: document.getElementById("walletBalance"),
+      availableBalance: document.getElementById("availableBalance"),
+      accountUnrealized: document.getElementById("accountUnrealized"),
+      accountPositions: document.getElementById("accountPositions"),
+      displayName: document.getElementById("displayName"),
+      displayMeta: document.getElementById("displayMeta"),
+      recordCount: document.getElementById("recordCount"),
+      updatedAt: document.getElementById("updatedAt"),
+      totalNotional: document.getElementById("totalNotional"),
+      effectiveLev: document.getElementById("effectiveLev"),
+      totalUnrealized: document.getElementById("totalUnrealized"),
+      positionCount: document.getElementById("positionCount"),
+      realizedSum: document.getElementById("realizedSum"),
+      tradeTable: document.getElementById("tradeTable"),
+      positionCards: document.getElementById("positionCards")
+    };
+
+    const state = {
+      trades: [],
+      marks: {}
+    };
+
+    function num(value) {
+      if (value === null || value === undefined) return 0;
+      const parsed = Number(String(value).replace(/,/g, "").replace(/[^\d.-]/g, ""));
+      return Number.isFinite(parsed) ? parsed : 0;
+    }
+
+    function fmt(value, digits = 2) {
+      const safe = Number.isFinite(value) ? value : 0;
+      return safe.toLocaleString("en-US", {
+        minimumFractionDigits: digits,
+        maximumFractionDigits: digits
+      });
+    }
+
+    function fmtCompact(value) {
+      const abs = Math.abs(value);
+      if (abs >= 1_000_000) return `${fmt(value / 1_000_000, 2)}M`;
+      if (abs >= 1_000) return `${fmt(value / 1_000, 1)}K`;
+      return fmt(value, 2);
+    }
+
+    function cssPnL(value) {
+      return value >= 0 ? "good-text" : "bad-text";
+    }
+
+    function parseManualMarks() {
+      try {
+        const parsed = JSON.parse(els.manualMarks.value || "{}");
+        state.marks = Object.fromEntries(
+          Object.entries(parsed).map(([symbol, price]) => [symbol.toUpperCase(), num(price)])
+        );
+      } catch (error) {
+        setStatus("标记价 JSON 格式不正确");
+      }
+    }
+
+    function parseTrades(raw) {
+      const blocks = raw
+        .split(/\n\s*\n/g)
+        .map((block) => block.trim())
+        .filter(Boolean);
+
+      const trades = [];
+      for (const block of blocks) {
+        const dateMatch = block.match(/(20\d{2}[-/.]\d{1,2}[-/.]\d{1,2}\s+\d{1,2}:\d{2}(?::\d{2})?)/);
+        const detail = block.match(/以均价为\s*([\d,.]+)\s*(开启|关闭)\s*做(多|空)\s*([A-Z0-9]+)\s+USDT仓位[，,]\s*成交数量为\s*([\d,.]+)\s*([A-Z0-9]+)[，,]\s*总价值为\s*([\d,.]+)\s*USDT/i);
+        if (!detail) continue;
+
+        const realizedMatch = block.match(/已实现盈亏为\s*([-+]?[\d,.]+)\s*USDT/i);
+        const actionText = `${detail[2]}做${detail[3]}`;
+        const action = detail[2] === "开启" ? "open" : "close";
+        const direction = detail[3] === "多" ? "long" : "short";
+        const symbol = detail[4].toUpperCase();
+        const qtyAsset = detail[6].toUpperCase();
+
+        trades.push({
+          id: `${dateMatch ? dateMatch[1] : "unknown"}-${symbol}-${trades.length}`,
+          time: dateMatch ? dateMatch[1].replace(/\//g, "-") : "",
+          action,
+          actionText,
+          direction,
+          symbol,
+          price: num(detail[1]),
+          qty: num(detail[5]),
+          qtyAsset,
+          value: num(detail[7]),
+          realized: realizedMatch ? num(realizedMatch[1]) : 0,
+          raw: block
+        });
+      }
+
+      return trades.sort((a, b) => {
+        if (!a.time || !b.time) return 0;
+        return new Date(a.time.replace(" ", "T")) - new Date(b.time.replace(" ", "T"));
+      });
+    }
+
+    function applyTrade(position, trade) {
+      const directionSign = trade.direction === "long" ? 1 : -1;
+      const delta = trade.action === "open" ? directionSign * trade.qty : -directionSign * trade.qty;
+      const currentQty = position.qty;
+      const nextQty = currentQty + delta;
+
+      if (currentQty === 0 || Math.sign(currentQty) === Math.sign(delta)) {
+        const currentAbs = Math.abs(currentQty);
+        const deltaAbs = Math.abs(delta);
+        const newAbs = currentAbs + deltaAbs;
+        position.avg = newAbs > 0 ? ((position.avg * currentAbs) + (trade.price * deltaAbs)) / newAbs : 0;
+      } else if (Math.sign(nextQty) !== Math.sign(currentQty) && nextQty !== 0) {
+        position.avg = trade.price;
+      }
+
+      position.qty = Math.abs(nextQty) < 1e-10 ? 0 : nextQty;
+      position.valueOpened += trade.action === "open" ? trade.value : 0;
+      position.realized += trade.realized || 0;
+      position.trades += 1;
+
+      if (position.qty === 0) position.avg = 0;
+    }
+
+    function buildPositions(trades) {
+      const map = new Map();
+      for (const trade of trades) {
+        if (!map.has(trade.symbol)) {
+          map.set(trade.symbol, {
+            symbol: trade.symbol,
+            qty: 0,
+            avg: 0,
+            realized: 0,
+            valueOpened: 0,
+            trades: 0
+          });
+        }
+        applyTrade(map.get(trade.symbol), trade);
+      }
+
+      return Array.from(map.values())
+        .filter((position) => Math.abs(position.qty) > 1e-8)
+        .map((position) => {
+          const mark = state.marks[position.symbol] || position.avg;
+          const absQty = Math.abs(position.qty);
+          const side = position.qty > 0 ? "long" : "short";
+          const notional = absQty * mark;
+          const entryValue = absQty * position.avg;
+          const unrealized = side === "long"
+            ? (mark - position.avg) * absQty
+            : (position.avg - mark) * absQty;
+          const priceMovePct = entryValue > 0 ? unrealized / entryValue * 100 : 0;
+
+          return {
+            ...position,
+            side,
+            absQty,
+            mark,
+            notional,
+            unrealized,
+            priceMovePct
+          };
+        });
+    }
+
+    function setStatus(message) {
+      els.status.textContent = message;
+    }
+
+    function persist() {
+      localStorage.setItem("alphafox-shadow-console", JSON.stringify({
+        traderName: els.traderName.value,
+        leaderBalance: els.leaderBalance.value,
+        aum: els.aum.value,
+        manualMarks: els.manualMarks.value,
+        rawTrades: els.rawTrades.value
+      }));
+    }
+
+    function restore() {
+      const saved = localStorage.getItem("alphafox-shadow-console");
+      if (!saved) {
+        els.rawTrades.value = sampleText;
+        return;
+      }
+      try {
+        const data = JSON.parse(saved);
+        els.traderName.value = data.traderName || "熬鹰资本";
+        els.leaderBalance.value = data.leaderBalance || "147923.05";
+        els.aum.value = data.aum || "3544825.12";
+        els.manualMarks.value = data.manualMarks || '{"SNDKUSDT":1724.45}';
+        els.rawTrades.value = data.rawTrades || sampleText;
+      } catch (error) {
+        els.rawTrades.value = sampleText;
+      }
+    }
+
+    function renderTrades(trades) {
+      if (!trades.length) {
+        els.tradeTable.innerHTML = `<div class="empty">暂无可解析记录</div>`;
+        return;
+      }
+
+      const rows = trades.map((trade) => `
+        <tr>
+          <td>${trade.time || "-"}</td>
+          <td><span class="badge ${trade.direction === "long" ? "long" : "short"}">${trade.actionText}</span></td>
+          <td>${trade.symbol}</td>
+          <td>${fmt(trade.price, 5)}</td>
+          <td>${fmt(trade.qty, 4)} ${trade.qtyAsset}</td>
+          <td>${fmt(trade.value, 2)}</td>
+          <td class="${cssPnL(trade.realized)}">${fmt(trade.realized, 2)}</td>
+        </tr>
+      `).join("");
+
+      els.tradeTable.innerHTML = `
+        <table>
+          <thead>
+            <tr>
+              <th>时间</th>
+              <th>动作</th>
+              <th>合约</th>
+              <th>均价</th>
+              <th>数量</th>
+              <th>名义价值</th>
+              <th>已实现</th>
+            </tr>
+          </thead>
+          <tbody>${rows}</tbody>
+        </table>
+      `;
+    }
+
+    function renderPositions(positions) {
+      if (!positions.length) {
+        els.positionCards.innerHTML = `<div class="empty">暂无净仓位</div>`;
+        return;
+      }
+
+      const balance = num(els.leaderBalance.value);
+      els.positionCards.innerHTML = positions.map((position) => {
+        const lev = balance > 0 ? position.notional / balance : 0;
+        const sideClass = position.side === "long" ? "long" : "short";
+        const sideText = position.side === "long" ? "多" : "空";
+        return `
+          <article class="position-card">
+            <div class="position-head">
+              <div class="symbol">${position.symbol}</div>
+              <span class="badge ${sideClass}">${sideText}</span>
+            </div>
+            <div class="mini-grid">
+              <div class="mini"><span>均价</span><strong>${fmt(position.avg, 5)}</strong></div>
+              <div class="mini"><span>标记价</span><strong>${fmt(position.mark, 5)}</strong></div>
+              <div class="mini"><span>数量</span><strong>${fmt(position.absQty, 4)}</strong></div>
+              <div class="mini"><span>名义价值</span><strong>${fmtCompact(position.notional)} USDT</strong></div>
+              <div class="mini"><span>推算杠杆</span><strong>${fmt(lev, 2)}x</strong></div>
+              <div class="mini"><span>价格盈亏率</span><strong class="${cssPnL(position.priceMovePct)}">${fmt(position.priceMovePct, 2)}%</strong></div>
+              <div class="mini"><span>未实现盈亏</span><strong class="${cssPnL(position.unrealized)}">${fmt(position.unrealized, 2)} USDT</strong></div>
+              <div class="mini"><span>已实现盈亏</span><strong class="${cssPnL(position.realized)}">${fmt(position.realized, 2)} USDT</strong></div>
+            </div>
+          </article>
+        `;
+      }).join("");
+    }
+
+    function render() {
+      parseManualMarks();
+      const trades = parseTrades(els.rawTrades.value);
+      state.trades = trades;
+      const positions = buildPositions(trades);
+      const realized = trades.reduce((sum, trade) => sum + trade.realized, 0);
+      const totalNotional = positions.reduce((sum, position) => sum + position.notional, 0);
+      const totalUnrealized = positions.reduce((sum, position) => sum + position.unrealized, 0);
+      const balance = num(els.leaderBalance.value);
+      const aum = num(els.aum.value);
+      const effectiveLev = balance > 0 ? totalNotional / balance : 0;
+
+      els.displayName.textContent = els.traderName.value.trim() || "未命名交易员";
+      els.displayMeta.textContent = `Binance · USDT 合约 · 余额 ${fmtCompact(balance)} / AUM ${fmtCompact(aum)}`;
+      els.recordCount.textContent = `${trades.length} 条记录`;
+      els.updatedAt.textContent = new Date().toLocaleString("zh-CN", { hour12: false });
+      els.totalNotional.textContent = `${fmt(totalNotional, 2)} USDT`;
+      els.effectiveLev.textContent = `${fmt(effectiveLev, 2)}x`;
+      els.totalUnrealized.textContent = `${totalUnrealized >= 0 ? "+" : ""}${fmt(totalUnrealized, 2)} USDT`;
+      els.totalUnrealized.className = `v ${totalUnrealized >= 0 ? "good" : "bad"}`;
+      els.positionCount.textContent = String(positions.length);
+      els.realizedSum.textContent = `已实现 ${realized >= 0 ? "+" : ""}${fmt(realized, 2)}`;
+
+      renderTrades(trades);
+      renderPositions(positions);
+      persist();
+      setStatus(trades.length ? "已按时间顺序重建净仓位" : "没有识别到 AlphaFox 中文流水");
+    }
+
+    async function fetchMarks() {
+      parseManualMarks();
+      const symbols = Array.from(new Set(state.trades.map((trade) => trade.symbol)));
+      if (!symbols.length) {
+        setStatus("先解析记录，再获取标记价");
+        return;
+      }
+
+      let ok = 0;
+      for (const symbol of symbols) {
+        try {
+          let response = await fetch(`/api/binance/mark?symbol=${encodeURIComponent(symbol)}`);
+          if (!response.ok) {
+            response = await fetch(`https://fapi.binance.com/fapi/v1/premiumIndex?symbol=${encodeURIComponent(symbol)}`);
+          }
+          if (!response.ok) throw new Error(`HTTP ${response.status}`);
+          const data = await response.json();
+          const mark = num(data.markPrice);
+          if (mark > 0) {
+            state.marks[symbol] = mark;
+            ok += 1;
+          }
+        } catch (error) {
+          console.warn(`Mark fetch failed for ${symbol}`, error);
+        }
+      }
+
+      els.manualMarks.value = JSON.stringify(state.marks, null, 2);
+      render();
+      setStatus(ok ? `已更新 ${ok} 个合约标记价` : "标记价接口不可用，请手动填写");
+    }
+
+    async function fetchAccount() {
+      try {
+        const response = await fetch("/api/binance/account");
+        const data = await response.json();
+        if (!response.ok) throw new Error(data.error || `HTTP ${response.status}`);
+
+        const positions = Array.isArray(data.positions)
+          ? data.positions.filter((position) => Math.abs(num(position.positionAmt)) > 0)
+          : [];
+        const wallet = num(data.totalWalletBalance);
+        const available = num(data.availableBalance);
+        const unrealized = num(data.totalUnrealizedProfit);
+
+        els.walletBalance.textContent = `${fmt(wallet, 2)} USDT`;
+        els.availableBalance.textContent = `${fmt(available, 2)} USDT`;
+        els.accountUnrealized.textContent = `${unrealized >= 0 ? "+" : ""}${fmt(unrealized, 2)} USDT`;
+        els.accountUnrealized.className = `v ${unrealized >= 0 ? "good" : "bad"}`;
+        els.accountPositions.textContent = String(positions.length);
+        els.apiMeta.textContent = `已连接 ${data._meta?.baseUrl || "Binance USD-M Futures"}`;
+        els.apiMode.textContent = data._meta?.hasKey ? "Key 已加载" : "未加载 Key";
+        setStatus("个人币安合约账户读取成功");
+      } catch (error) {
+        els.apiMeta.textContent = "本地代理未启动，或 API key/权限/时间戳不正确";
+        els.apiMode.textContent = "未连接";
+        setStatus(error.message || "个人 API 读取失败");
+      }
+    }
+
+    els.parseBtn.addEventListener("click", render);
+    els.markBtn.addEventListener("click", fetchMarks);
+    els.accountBtn.addEventListener("click", fetchAccount);
+    els.sampleBtn.addEventListener("click", () => {
+      els.rawTrades.value = sampleText;
+      els.manualMarks.value = '{"SNDKUSDT":1724.45}';
+      render();
+    });
+    els.clearBtn.addEventListener("click", () => {
+      els.rawTrades.value = "";
+      render();
+    });
+
+    for (const element of [els.traderName, els.leaderBalance, els.aum, els.manualMarks]) {
+      element.addEventListener("change", render);
+    }
+
+    restore();
+    render();
+  </script>
+</body>
+</html>
