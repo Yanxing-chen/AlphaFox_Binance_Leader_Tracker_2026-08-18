@@ -268,7 +268,7 @@
     let activeTab = tabs.includes(initialTab) ? initialTab : "performance";
     let activePortfolioId = localStorage.getItem("activePortfolioId") || "5075281354358777856";
     let traderList = [];
-    const SIM_STORAGE_KEY = "leaderTrackerSimulations:v1";
+    const SIM_STORAGE_KEY = "leaderTrackerSimulations:v2";
     const SIM_STARTING_BALANCE = 10000;
     let simulations = readSimulations();
 
@@ -355,6 +355,7 @@
       const detail = snapshot.detail || {};
       const leaderBalance = Math.max(1, num(snapshot.marginBalance));
       const sim = {
+        version: 2,
         portfolioId: activePortfolioId,
         label: detail.nickname || traderList.find((item) => item.portfolioId === activePortfolioId)?.label || "带单员",
         status: "active",
@@ -367,22 +368,7 @@
         positions: {},
         events: []
       };
-
-      for (const pos of snapshot.positions || []) {
-        const side = String(pos.side).toUpperCase();
-        const qty = num(pos.absQty) * sim.copyRatio;
-        if (!qty) continue;
-        sim.positions[`${pos.symbol}|${side}`] = {
-          symbol: pos.symbol,
-          baseAsset: pos.baseAsset || pos.symbol.replace(/USDT$/, ""),
-          side,
-          qty,
-          avgPrice: num(pos.markPrice || pos.avgPrice),
-          markPrice: num(pos.markPrice || pos.avgPrice),
-          openedAt: Date.now()
-        };
-      }
-
+      pushSimEvent(sim, "开始模拟跟单", "不追启动前已经存在的仓位，只处理之后出现的新开仓信号", 0, sim.startedAt);
       simulations[activePortfolioId] = sim;
       saveSimulations();
       renderActive();
@@ -469,7 +455,7 @@
 
       const pos = sim.positions[key];
       if (!pos || pos.qty <= 0) {
-        pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `未找到对应模拟仓位，已跳过`, 0, orderTime(order));
+        pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `这是启动前旧仓位的平仓，本模拟账户没有追入，已跳过`, 0, orderTime(order));
         return;
       }
       const closeQty = Math.min(pos.qty, qty);
@@ -672,14 +658,14 @@
             <div class="sim-stack">
               <div class="metric"><span class="label">当前交易员</span><strong class="value">${detail.nickname || "Binance 带单员"}</strong></div>
               <div class="metric"><span class="label">启动资金</span><strong class="value">${fmt(SIM_STARTING_BALANCE, 2)}<span class="unit">USDT</span></strong></div>
-              <div class="metric"><span class="label">模拟模式</span><strong class="value small">按资金比例同步当前仓位与后续订单</strong></div>
+              <div class="metric"><span class="label">模拟模式</span><strong class="value small">不追旧仓位，只跟启动后的新开仓</strong></div>
               <div class="sim-actions"><button class="btn primary" id="startSim">开始模拟跟单</button></div>
             </div>
             <div class="panel">
               <div class="section-head"><h2>跟单规则</h2></div>
               <div class="section-body record-list">
                 <article class="record"><div><strong>资金比例</strong><p>用 10,000 USDT 对比带单员当前保证金余额，得到固定跟单比例。</p></div></article>
-                <article class="record"><div><strong>开平仓</strong><p>启动时同步当前推断持仓，之后只处理启动后的公开交易记录。</p></div></article>
+                <article class="record"><div><strong>开平仓</strong><p>启动前已经存在的仓位视为错过信号，不按现价补跟；只跟启动后的新开仓记录。</p></div></article>
                 <article class="record"><div><strong>风险边界</strong><p>这是纸面模拟，不会连接你的币安账户，也不会真实下单。</p></div></article>
               </div>
             </div>
