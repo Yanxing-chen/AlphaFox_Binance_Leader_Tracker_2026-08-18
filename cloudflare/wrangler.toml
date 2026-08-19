@@ -11,6 +11,11 @@ run_worker_first = ["/api/*", "/__scheduled*"]
 
 # Binance blocks Cloudflare Worker egress with HTTP 403.
 # Polling is done by GitHub Actions and posted to /api/ingest instead.
+# Cloudflare Cron dispatches the GitHub workflow because GitHub's own schedule
+# can be delayed or skipped.
+
+[triggers]
+crons = ["*/5 * * * *"]
 
 [[d1_databases]]
 binding = "DB"
@@ -23,3 +28,7 @@ PAGE_SIZE = "100"
 BACKFILL_PAGES = "6"
 BINANCE_WEB_BASE_URL = "https://www.binance.com"
 BINANCE_FAPI_BASE_URL = "https://www.binance.com"
+GITHUB_OWNER = "Yanxing-chen"
+GITHUB_REPO = "AlphaFox_Binance_Leader_Tracker_2026-08-18"
+GITHUB_WORKFLOW = "poll-binance-leaders.yml"
+GITHUB_REF = "main"

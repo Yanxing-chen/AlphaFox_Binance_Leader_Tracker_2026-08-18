@@ -10,6 +10,10 @@ const CONFIG = {
   defaultPortfolioId: "5075281354358777856",
   binanceWebBaseUrl: "https://www.binance.com",
   binanceFapiBaseUrl: "https://www.binance.com",
+  githubOwner: "Yanxing-chen",
+  githubRepo: "AlphaFox_Binance_Leader_Tracker_2026-08-18",
+  githubWorkflow: "poll-binance-leaders.yml",
+  githubRef: "main",
   pageSize: 100,
   backfillPages: 6
 };
@@ -27,9 +31,10 @@ export default {
   },
 
   async scheduled(controller, env, ctx) {
-    ctx.waitUntil(Promise.resolve({
-      ok: true,
-      message: "Cloudflare cron is disabled because Binance blocks Cloudflare egress. GitHub Actions posts snapshots to /api/ingest."
+    ctx.waitUntil(dispatchGitHubWorkflow(env, {
+      source: "cloudflare-cron",
+      cron: controller?.cron || null,
+      scheduledTime: controller?.scheduledTime || Date.now()
     }));
   }
 };
@@ -45,8 +50,24 @@ async function handleApi(request, env) {
         mode: "cloudflare-worker-d1",
         defaultPortfolioId: CONFIG.defaultPortfolioId,
         traders: await traderHealth(env),
-        cron: env.POLL_CRON || "* * * * *"
+        cron: env.POLL_CRON || "* * * * *",
+        githubDispatch: {
+          owner: env.GITHUB_OWNER || CONFIG.githubOwner,
+          repo: env.GITHUB_REPO || CONFIG.githubRepo,
+          workflow: env.GITHUB_WORKFLOW || CONFIG.githubWorkflow,
+          ref: env.GITHUB_REF || CONFIG.githubRef,
+          configured: Boolean(env.GITHUB_WORKFLOW_TOKEN)
+        }
       });
+    }
+
+    if (url.pathname === "/api/dispatch-github") {
+      if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
+      const expected = env.INGEST_SECRET ? `Bearer ${env.INGEST_SECRET}` : "";
+      if (!expected || request.headers.get("authorization") !== expected) {
+        return json({ ok: false, error: "Unauthorized" }, 401);
+      }
+      return json(await dispatchGitHubWorkflow(env, { source: "manual-api" }));
     }
 
     if (url.pathname === "/api/traders") {
@@ -84,6 +105,41 @@ async function handleApi(request, env) {
       payload: error.payload || null
     }, 500);
   }
+}
+
+async function dispatchGitHubWorkflow(env, meta = {}) {
+  if (!env.GITHUB_WORKFLOW_TOKEN) {
+    return {
+      ok: false,
+      skipped: true,
+      reason: "GITHUB_WORKFLOW_TOKEN is not configured",
+      ...meta
+    };
+  }
+
+  const owner = env.GITHUB_OWNER || CONFIG.githubOwner;
+  const repo = env.GITHUB_REPO || CONFIG.githubRepo;
+  const workflow = env.GITHUB_WORKFLOW || CONFIG.githubWorkflow;
+  const ref = env.GITHUB_REF || CONFIG.githubRef;
+  const url = `https://api.github.com/repos/${encodeURIComponent(owner)}/${encodeURIComponent(repo)}/actions/workflows/${encodeURIComponent(workflow)}/dispatches`;
+  const response = await fetch(url, {
+    method: "POST",
+    headers: {
+      accept: "application/vnd.github+json",
+      authorization: `Bearer ${env.GITHUB_WORKFLOW_TOKEN}`,
+      "content-type": "application/json",
+      "user-agent": "binance-leader-tracker-cloudflare-cron",
+      "x-github-api-version": "2022-11-28"
+    },
+    body: JSON.stringify({ ref })
+  });
+
+  if (response.status === 204) {
+    return { ok: true, owner, repo, workflow, ref, ...meta };
+  }
+
+  const text = await response.text();
+  throw new Error(`GitHub workflow dispatch failed: HTTP ${response.status} ${text}`);
 }
 
 async function handleIngest(request, env) {
