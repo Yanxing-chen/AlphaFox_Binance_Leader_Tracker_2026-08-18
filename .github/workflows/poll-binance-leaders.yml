@@ -28,6 +28,10 @@ jobs:
             label: "Rainbow88"
           - id: "5098677138323805440"
             label: "geddong"
+          - id: "5175036213074191105"
+            label: "如何设置低于10万U不能跟我的单"
+          - id: "4788776444236355328"
+            label: "星辰社区-意钦"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
