@@ -86,6 +86,18 @@
     .record p { margin: 8px 0 0; color: #333; line-height: 1.5; font-size: 13px; }
     .empty { padding: 42px 16px; color: var(--muted); text-align: center; font-weight: 650; }
     .note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .sim-layout { display: grid; grid-template-columns: minmax(360px, .72fr) minmax(560px, 1.28fr); gap: 16px; }
+    .sim-stack { display: grid; gap: 12px; }
+    .sim-summary { display: grid; gap: 12px; }
+    .sim-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+    .sim-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .sim-ledger { display: grid; gap: 8px; max-height: 360px; overflow: auto; }
+    .sim-event { border: 1px solid var(--line); border-radius: var(--radius); padding: 10px; display: grid; gap: 4px; background: #fff; }
+    .sim-event strong { font-size: 13px; }
+    .sim-event span { color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .sim-position-list { display: grid; gap: 10px; }
+    .sim-position { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; }
+    .sim-position-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
     .mobile-cards { display: none; }
     .history-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; background: #fff; }
     .history-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -186,6 +198,10 @@
       .metric .value { font-size: 17px; }
       .chart-wrap { height: 190px; }
       .asset-row { grid-template-columns: 60px 1fr 54px; gap: 8px; font-size: 12px; }
+      .sim-layout { grid-template-columns: 1fr; gap: 10px; }
+      .sim-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .sim-position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
+      .sim-ledger { max-height: none; }
       .position-card { margin-bottom: 10px; padding: 12px; gap: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
       .symbol-line { gap: 6px; font-size: 17px; }
       .chip { min-height: 22px; padding: 4px 7px; border-radius: 6px; font-size: 11px; }
@@ -236,6 +252,7 @@
       <button class="tab" data-tab="positions">持有仓位</button>
       <button class="tab" data-tab="history">仓位历史</button>
       <button class="tab" data-tab="records">最新记录</button>
+      <button class="tab" data-tab="simulator">模拟跟单</button>
     </nav>
 
     <section class="content" id="content"></section>
@@ -247,9 +264,13 @@
     const content = $("#content");
     let snapshot = null;
     const initialTab = new URLSearchParams(window.location.search).get("tab");
-    let activeTab = ["performance", "positions", "history", "records"].includes(initialTab) ? initialTab : "performance";
+    const tabs = ["performance", "positions", "history", "records", "simulator"];
+    let activeTab = tabs.includes(initialTab) ? initialTab : "performance";
     let activePortfolioId = localStorage.getItem("activePortfolioId") || "5075281354358777856";
     let traderList = [];
+    const SIM_STORAGE_KEY = "leaderTrackerSimulations:v1";
+    const SIM_STARTING_BALANCE = 10000;
+    let simulations = readSimulations();
 
     function num(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
     function fmt(value, digits = 2) { return num(value).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }); }
@@ -273,6 +294,230 @@
       return String(pos.side).toUpperCase() === "SHORT"
         ? pos.avgPrice * (1 + buffer)
         : pos.avgPrice * Math.max(0, 1 - buffer);
+    }
+
+    function readSimulations() {
+      try {
+        const parsed = JSON.parse(localStorage.getItem(SIM_STORAGE_KEY) || "{}");
+        return parsed && typeof parsed === "object" ? parsed : {};
+      } catch {
+        return {};
+      }
+    }
+
+    function saveSimulations() {
+      localStorage.setItem(SIM_STORAGE_KEY, JSON.stringify(simulations));
+    }
+
+    function currentSimulation() {
+      return simulations[activePortfolioId] || null;
+    }
+
+    function simOrderKey(order) {
+      return [
+        order.orderUpdateTime || order.time || "",
+        order.symbol || "",
+        order.side || "",
+        order.positionSide || "",
+        order.avgPrice || order.price || "",
+        order.executedQty || order.qty || ""
+      ].join("|");
+    }
+
+    function orderQty(order) {
+      return num(order.executedQty ?? order.qty);
+    }
+
+    function orderPrice(order) {
+      return num(order.avgPrice ?? order.price);
+    }
+
+    function orderTime(order) {
+      return num(order.orderUpdateTime || order.orderTime || order.time);
+    }
+
+    function isOpenOrder(order) {
+      const pos = String(order.positionSide || "").toUpperCase();
+      const side = String(order.side || "").toUpperCase();
+      return (pos === "LONG" && side === "BUY") || (pos === "SHORT" && side === "SELL");
+    }
+
+    function markMap(data) {
+      const map = new Map();
+      for (const pos of data.positions || []) {
+        map.set(`${pos.symbol}|${String(pos.side).toUpperCase()}`, num(pos.markPrice || pos.avgPrice));
+      }
+      return map;
+    }
+
+    function startSimulation() {
+      if (!snapshot) return;
+      const detail = snapshot.detail || {};
+      const leaderBalance = Math.max(1, num(snapshot.marginBalance));
+      const sim = {
+        portfolioId: activePortfolioId,
+        label: detail.nickname || traderList.find((item) => item.portfolioId === activePortfolioId)?.label || "带单员",
+        status: "active",
+        startedAt: Date.now(),
+        initialBalance: SIM_STARTING_BALANCE,
+        realizedBalance: SIM_STARTING_BALANCE,
+        realizedPnl: 0,
+        copyRatio: SIM_STARTING_BALANCE / leaderBalance,
+        processed: {},
+        positions: {},
+        events: []
+      };
+
+      for (const pos of snapshot.positions || []) {
+        const side = String(pos.side).toUpperCase();
+        const qty = num(pos.absQty) * sim.copyRatio;
+        if (!qty) continue;
+        sim.positions[`${pos.symbol}|${side}`] = {
+          symbol: pos.symbol,
+          baseAsset: pos.baseAsset || pos.symbol.replace(/USDT$/, ""),
+          side,
+          qty,
+          avgPrice: num(pos.markPrice || pos.avgPrice),
+          markPrice: num(pos.markPrice || pos.avgPrice),
+          openedAt: Date.now()
+        };
+      }
+
+      simulations[activePortfolioId] = sim;
+      saveSimulations();
+      renderActive();
+    }
+
+    function stopSimulation() {
+      const sim = currentSimulation();
+      if (!sim) return;
+      sim.status = "paused";
+      sim.pausedAt = Date.now();
+      saveSimulations();
+      renderActive();
+    }
+
+    function resumeSimulation() {
+      const sim = currentSimulation();
+      if (!sim) return;
+      sim.status = "active";
+      sim.resumedAt = Date.now();
+      saveSimulations();
+      renderActive();
+    }
+
+    function resetSimulation() {
+      delete simulations[activePortfolioId];
+      saveSimulations();
+      renderActive();
+    }
+
+    function processSimulation(data) {
+      const sim = currentSimulation();
+      if (!sim || sim.status !== "active") return;
+      sim.processed ||= {};
+      sim.positions ||= {};
+      sim.events ||= [];
+
+      const orders = [...(data.latestOrders || [])]
+        .filter((order) => orderTime(order) > sim.startedAt)
+        .sort((a, b) => orderTime(a) - orderTime(b));
+
+      for (const order of orders) {
+        const key = simOrderKey(order);
+        if (sim.processed[key]) continue;
+        applySimOrder(sim, order);
+        sim.processed[key] = true;
+      }
+
+      const marks = markMap(data);
+      for (const pos of Object.values(sim.positions)) {
+        pos.markPrice = marks.get(`${pos.symbol}|${pos.side}`) || pos.markPrice || pos.avgPrice;
+      }
+      sim.lastUpdatedAt = Date.now();
+      saveSimulations();
+    }
+
+    function applySimOrder(sim, order) {
+      const symbol = String(order.symbol || "").toUpperCase();
+      const side = String(order.positionSide || "").toUpperCase();
+      const qty = orderQty(order) * num(sim.copyRatio);
+      const price = orderPrice(order);
+      if (!symbol || !side || !qty || !price) return;
+      const key = `${symbol}|${side}`;
+      const asset = order.baseAsset || symbol.replace(/USDT$/, "");
+      const opened = isOpenOrder(order);
+
+      if (opened) {
+        const pos = sim.positions[key] || {
+          symbol,
+          baseAsset: asset,
+          side,
+          qty: 0,
+          avgPrice: 0,
+          markPrice: price,
+          openedAt: orderTime(order)
+        };
+        const nextQty = pos.qty + qty;
+        pos.avgPrice = nextQty > 0 ? ((pos.avgPrice * pos.qty) + (price * qty)) / nextQty : price;
+        pos.qty = nextQty;
+        pos.markPrice = price;
+        sim.positions[key] = pos;
+        pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `数量 ${trim(qty, 4)} ${asset}，均价 ${fmt(price, 5)}`, 0, orderTime(order));
+        return;
+      }
+
+      const pos = sim.positions[key];
+      if (!pos || pos.qty <= 0) {
+        pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `未找到对应模拟仓位，已跳过`, 0, orderTime(order));
+        return;
+      }
+      const closeQty = Math.min(pos.qty, qty);
+      const pnl = side === "LONG"
+        ? (price - pos.avgPrice) * closeQty
+        : (pos.avgPrice - price) * closeQty;
+      pos.qty -= closeQty;
+      pos.markPrice = price;
+      sim.realizedPnl = num(sim.realizedPnl) + pnl;
+      sim.realizedBalance = num(sim.realizedBalance) + pnl;
+      if (pos.qty <= 1e-8) delete sim.positions[key];
+      pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `数量 ${trim(closeQty, 4)} ${asset}，均价 ${fmt(price, 5)}`, pnl, orderTime(order));
+    }
+
+    function pushSimEvent(sim, title, detail, pnl, time) {
+      sim.events.unshift({
+        title,
+        detail,
+        pnl,
+        time
+      });
+      sim.events = sim.events.slice(0, 80);
+    }
+
+    function simSummary(sim) {
+      const positions = Object.values(sim?.positions || {}).map((pos) => {
+        const markPrice = num(pos.markPrice || pos.avgPrice);
+        const unrealizedPnl = pos.side === "LONG"
+          ? (markPrice - pos.avgPrice) * pos.qty
+          : (pos.avgPrice - markPrice) * pos.qty;
+        return {
+          ...pos,
+          markPrice,
+          notional: markPrice * pos.qty,
+          unrealizedPnl
+        };
+      });
+      const unrealizedPnl = positions.reduce((sum, pos) => sum + pos.unrealizedPnl, 0);
+      const notional = positions.reduce((sum, pos) => sum + pos.notional, 0);
+      const equity = num(sim?.realizedBalance) + unrealizedPnl;
+      return {
+        positions,
+        unrealizedPnl,
+        notional,
+        equity,
+        roi: sim ? (equity - num(sim.initialBalance)) / num(sim.initialBalance) * 100 : 0,
+        leverage: equity > 0 ? notional / equity : 0
+      };
     }
 
     function renderHeader(data) {
@@ -417,13 +662,92 @@
       }).join("") : `<div class="empty">暂无交易记录</div>`}</div></section>`;
     }
 
+    function renderSimulator() {
+      const detail = snapshot.detail || {};
+      const sim = currentSimulation();
+      if (!sim) {
+        content.innerHTML = `<section class="panel">
+          <div class="section-head"><h2>模拟跟单</h2><span class="note">个人纸面账户，本浏览器保存</span></div>
+          <div class="section-body sim-layout">
+            <div class="sim-stack">
+              <div class="metric"><span class="label">当前交易员</span><strong class="value">${detail.nickname || "Binance 带单员"}</strong></div>
+              <div class="metric"><span class="label">启动资金</span><strong class="value">${fmt(SIM_STARTING_BALANCE, 2)}<span class="unit">USDT</span></strong></div>
+              <div class="metric"><span class="label">模拟模式</span><strong class="value small">按资金比例同步当前仓位与后续订单</strong></div>
+              <div class="sim-actions"><button class="btn primary" id="startSim">开始模拟跟单</button></div>
+            </div>
+            <div class="panel">
+              <div class="section-head"><h2>跟单规则</h2></div>
+              <div class="section-body record-list">
+                <article class="record"><div><strong>资金比例</strong><p>用 10,000 USDT 对比带单员当前保证金余额，得到固定跟单比例。</p></div></article>
+                <article class="record"><div><strong>开平仓</strong><p>启动时同步当前推断持仓，之后只处理启动后的公开交易记录。</p></div></article>
+                <article class="record"><div><strong>风险边界</strong><p>这是纸面模拟，不会连接你的币安账户，也不会真实下单。</p></div></article>
+              </div>
+            </div>
+          </div>
+        </section>`;
+        $("#startSim")?.addEventListener("click", startSimulation);
+        return;
+      }
+
+      const summary = simSummary(sim);
+      const statusText = sim.status === "active" ? "跟单中" : "已暂停";
+      content.innerHTML = `<section class="sim-layout">
+        <div class="panel sim-summary">
+          <div class="section-head"><h2>模拟跟单</h2><span class="note">${statusText}</span></div>
+          <div class="section-body sim-stack">
+            <div class="sim-grid">
+              <div class="metric"><span class="label">模拟权益</span><strong class="value ${pnlClass(summary.equity - sim.initialBalance)}">${fmt(summary.equity, 2)}<span class="unit">USDT</span></strong></div>
+              <div class="metric"><span class="label">收益率</span><strong class="value ${pnlClass(summary.roi)}">${signed(summary.roi, 2, "%")}</strong></div>
+              <div class="metric"><span class="label">已实现盈亏</span><strong class="value ${pnlClass(sim.realizedPnl)}">${signed(sim.realizedPnl, 2)}<span class="unit">USDT</span></strong></div>
+              <div class="metric"><span class="label">未实现盈亏</span><strong class="value ${pnlClass(summary.unrealizedPnl)}">${signed(summary.unrealizedPnl, 2)}<span class="unit">USDT</span></strong></div>
+              <div class="metric"><span class="label">持仓名义价值</span><strong class="value">${compact(summary.notional)}<span class="unit">USDT</span></strong></div>
+              <div class="metric"><span class="label">账户杠杆</span><strong class="value">${fmt(summary.leverage, 2)}x</strong></div>
+              <div class="metric"><span class="label">跟单比例</span><strong class="value">${fmt(sim.copyRatio * 100, 2)}%</strong></div>
+              <div class="metric"><span class="label">开始时间</span><strong class="value small">${dt(sim.startedAt)}</strong></div>
+            </div>
+            <div class="sim-actions">
+              ${sim.status === "active" ? `<button class="btn" id="stopSim">暂停跟单</button>` : `<button class="btn primary" id="resumeSim">继续跟单</button>`}
+              <button class="btn" id="resetSim">重置账户</button>
+            </div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="section-head"><h2>模拟持仓</h2><span class="note">${summary.positions.length} 个仓位</span></div>
+          <div class="section-body sim-position-list">
+            ${summary.positions.length ? summary.positions.map((pos) => `<article class="sim-position">
+              <div class="symbol-line"><span>${pos.symbol}</span><span class="chip ${sideClass(pos.side)}">${sideText(pos.side)}</span><span class="chip">模拟</span></div>
+              <div class="sim-position-grid">
+                <div class="mini-field"><span>数量</span><strong>${trim(pos.qty, 4)} ${pos.baseAsset}</strong></div>
+                <div class="mini-field"><span>成本均价</span><strong>${fmt(pos.avgPrice, 5)}</strong></div>
+                <div class="mini-field"><span>标记价格</span><strong>${fmt(pos.markPrice, 5)}</strong></div>
+                <div class="mini-field"><span>未实现盈亏</span><strong class="${pnlClass(pos.unrealizedPnl)}">${signed(pos.unrealizedPnl, 2)} USDT</strong></div>
+              </div>
+            </article>`).join("") : `<div class="empty">暂无模拟持仓</div>`}
+          </div>
+        </div>
+      </section>
+      <section class="panel">
+        <div class="section-head"><h2>模拟流水</h2><span class="note">按公开订单推演</span></div>
+        <div class="section-body sim-ledger">
+          ${(sim.events || []).length ? sim.events.slice(0, 20).map((event) => `<article class="sim-event">
+            <strong>${event.title}${event.pnl ? ` · <span class="${pnlClass(event.pnl)}">${signed(event.pnl, 2)} USDT</span>` : ""}</strong>
+            <span>${event.detail} · ${dt(event.time)}</span>
+          </article>`).join("") : `<div class="empty">暂无模拟流水</div>`}
+        </div>
+      </section>`;
+      $("#stopSim")?.addEventListener("click", stopSimulation);
+      $("#resumeSim")?.addEventListener("click", resumeSimulation);
+      $("#resetSim")?.addEventListener("click", resetSimulation);
+    }
+
     function renderActive() {
       if (activeTab === "performance") renderPerformance();
       if (activeTab === "positions") renderPositions();
       if (activeTab === "history") renderHistory();
       if (activeTab === "records") renderRecords();
+      if (activeTab === "simulator") renderSimulator();
     }
-    function render(data) { snapshot = data; renderHeader(data); renderActive(); }
+    function render(data) { snapshot = data; processSimulation(data); renderHeader(data); renderActive(); }
     async function loadSnapshot() { const response = await fetch(`/api/snapshot?portfolioId=${encodeURIComponent(activePortfolioId)}&t=${Date.now()}`, { cache: "no-store" }); render(await response.json()); }
     async function pollNow() { const button = $("#pollBtn"); button.disabled = true; try { const response = await fetch(`/api/poll?portfolioId=${encodeURIComponent(activePortfolioId)}&t=${Date.now()}`, { cache: "no-store" }); render(await response.json()); } finally { button.disabled = false; } }
     function syncTabs() { $$(".tab").forEach((item) => item.classList.toggle("active", item.dataset.tab === activeTab)); }
