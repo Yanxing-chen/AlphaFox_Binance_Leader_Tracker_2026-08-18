@@ -118,6 +118,9 @@
       outline: none;
     }
     .field input:focus, .field select:focus { border-color: #d0a500; box-shadow: 0 0 0 3px rgba(244,194,27,.16); }
+    .field input[type="range"] { padding: 0; min-height: 22px; accent-color: var(--yellow); background: transparent; border: 0; box-shadow: none; }
+    .field-head { display: flex; align-items: baseline; justify-content: space-between; gap: 8px; }
+    .field-head output { font-size: 12px; font-weight: 760; color: var(--ink); }
     .segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 4px; border-radius: var(--radius); background: var(--soft); }
     .segmented button { min-height: 36px; border-radius: 7px; color: var(--muted); font-size: 13px; font-weight: 720; }
     .segmented button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
@@ -134,6 +137,7 @@
     .preview-row:last-child { border-bottom: 0; padding-bottom: 0; }
     .preview-row span { color: var(--muted); font-size: 12px; }
     .preview-row strong { font-size: 15px; text-align: right; }
+    .plain-note { margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
     .mobile-cards { display: none; }
     .history-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; background: #fff; }
     .history-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -443,7 +447,7 @@
       if (!snapshot) return;
       const detail = snapshot.detail || {};
       const leaderBalance = Math.max(1, num(snapshot.marginBalance));
-      const initialBalance = Math.max(1, fieldNumber("simInitialBalance", SIM_STARTING_BALANCE));
+      const initialBalance = Math.min(100000, Math.max(100, fieldNumber("simInitialBalance", SIM_STARTING_BALANCE)));
       const config = buildConfigFromForm();
       const sim = {
         version: 2,
@@ -846,7 +850,7 @@
                 <h3>1. 基础配置</h3>
                 <div class="field-grid">
                   <div class="field"><label for="simAccountName">账户名称</label><input id="simAccountName" value="${todayName}" /></div>
-                  <div class="field"><label for="simInitialBalance">初始资金 USDT</label><input id="simInitialBalance" type="number" min="1" step="100" value="${SIM_STARTING_BALANCE}" /></div>
+                  <div class="field"><label for="simInitialBalance">初始资金 USDT</label><input id="simInitialBalance" type="number" min="100" max="100000" step="100" value="${SIM_STARTING_BALANCE}" /></div>
                 </div>
                 <div class="field">
                   <label>信号源</label>
@@ -858,11 +862,12 @@
                 <h3>2. 仓位跟随模式</h3>
                 <div class="segmented">
                   <button type="button" class="active" data-follow-mode="proportional">等比例跟单</button>
-                  <button type="button" data-follow-mode="fixed">固定名义价值</button>
+                  <button type="button" data-follow-mode="fixed">固定每次下单金额</button>
                 </div>
+                <p class="plain-note">等比例跟单会按你的资金和带单员保证金比例缩放仓位；固定每次下单金额则每次新开仓都用同一笔 USDT 预算。</p>
                 <div class="field-grid">
-                  <div class="field"><label for="simFixedNotional">固定名义价值 USDT</label><input id="simFixedNotional" type="number" min="1" step="10" value="100" /></div>
-                  <div class="field"><label for="simMaxOrderNotional">单笔上限 USDT，0 为不限</label><input id="simMaxOrderNotional" type="number" min="0" step="10" value="0" /></div>
+                  <div class="field"><label for="simFixedNotional">固定每次下单金额 USDT</label><input id="simFixedNotional" type="number" min="1" step="10" value="100" /></div>
+                  <div class="field"><label for="simMaxOrderNotional">单笔最大跟单金额 USDT，0 为不限</label><input id="simMaxOrderNotional" type="number" min="0" step="10" value="0" /></div>
                 </div>
                 <div class="switch-row">
                   <div><strong>只跟新开仓</strong><span>启动前已经存在的仓位视为错过信号，不按现价补追。</span></div>
@@ -881,19 +886,21 @@
               <div class="form-block">
                 <h3>4. 账户保护</h3>
                 <div class="field-grid">
-                  <div class="field"><label for="simAccountTakeProfit">账户止盈 %，0 为关闭</label><input id="simAccountTakeProfit" type="number" min="0" step="1" value="0" /></div>
-                  <div class="field"><label for="simAccountStopLoss">账户止损 %，0 为关闭</label><input id="simAccountStopLoss" type="number" min="0" step="1" value="0" /></div>
-                  <div class="field"><label for="simMaxDrawdown">最大回撤 %，0 为关闭</label><input id="simMaxDrawdown" type="number" min="0" step="1" value="0" /></div>
+                  <div class="field"><div class="field-head"><label for="simAccountTakeProfit">账户止盈</label><output for="simAccountTakeProfit">关闭</output></div><input id="simAccountTakeProfit" type="range" min="0" max="100" step="1" value="0" /></div>
+                  <div class="field"><div class="field-head"><label for="simAccountStopLoss">账户止损</label><output for="simAccountStopLoss">关闭</output></div><input id="simAccountStopLoss" type="range" min="0" max="80" step="1" value="0" /></div>
+                  <div class="field"><div class="field-head"><label for="simMaxDrawdown">最大回撤</label><output for="simMaxDrawdown">关闭</output></div><input id="simMaxDrawdown" type="range" min="0" max="80" step="1" value="0" /></div>
                 </div>
+                <p class="plain-note">账户保护控制整笔模拟策略。达到条件后会停止继续跟单。</p>
               </div>
 
               <div class="form-block">
                 <h3>5. 单仓保护</h3>
                 <div class="field-grid">
-                  <div class="field"><label for="simPositionTakeProfit">单仓止盈 %，0 为关闭</label><input id="simPositionTakeProfit" type="number" min="0" step="1" value="0" /></div>
-                  <div class="field"><label for="simPositionStopLoss">单仓止损 %，0 为关闭</label><input id="simPositionStopLoss" type="number" min="0" step="1" value="0" /></div>
-                  <div class="field"><label for="simTrailingStop">单仓追踪止损 %，0 为关闭</label><input id="simTrailingStop" type="number" min="0" step="1" value="0" /></div>
+                  <div class="field"><div class="field-head"><label for="simPositionTakeProfit">单仓止盈</label><output for="simPositionTakeProfit">关闭</output></div><input id="simPositionTakeProfit" type="range" min="0" max="100" step="1" value="0" /></div>
+                  <div class="field"><div class="field-head"><label for="simPositionStopLoss">单仓止损</label><output for="simPositionStopLoss">关闭</output></div><input id="simPositionStopLoss" type="range" min="0" max="80" step="1" value="0" /></div>
+                  <div class="field"><div class="field-head"><label for="simTrailingStop">单仓追踪止损</label><output for="simTrailingStop">关闭</output></div><input id="simTrailingStop" type="range" min="0" max="50" step="1" value="0" /></div>
                 </div>
+                <p class="plain-note">单仓保护只处理某一个合约仓位，不会影响其他仓位。</p>
               </div>
             </div>
           </div>
@@ -908,8 +915,8 @@
                 <div class="preview-row"><span>数据来源</span><strong>Binance 公开订单</strong></div>
               </div>
               <div class="record-list">
-                <article class="record"><div><strong>不会补追旧仓</strong><p>如果熬鹰资本已经在 1120 开仓，你现在才启动模拟，不会按 1170 现价追进去。</p></div></article>
-                <article class="record"><div><strong>不会真实下单</strong><p>这是本浏览器里的模拟账户，不读取你的交易所 API，也不会碰真实资金。</p></div></article>
+                <article class="record"><div><strong>不补追旧仓</strong><p>启动前已经存在的仓位会视为错过信号，模拟账户只处理启动后的新信号。</p></div></article>
+                <article class="record"><div><strong>纸面模拟</strong><p>模拟账户只在本浏览器里记录结果，不连接交易所，也不会触发真实交易。</p></div></article>
               </div>
               <button class="btn primary" id="startSim">保存并启动模拟</button>
             </div>
@@ -937,7 +944,7 @@
               <div class="metric"><span class="label">开始时间</span><strong class="value small">${dt(sim.startedAt)}</strong></div>
             </div>
             <div class="preview-list">
-              <div class="preview-row"><span>跟单模式</span><strong>${config.followMode === "fixed" ? `固定 ${fmt(config.fixedNotional, 2)} USDT` : "等比例跟单"}</strong></div>
+              <div class="preview-row"><span>跟单模式</span><strong>${config.followMode === "fixed" ? `每次 ${fmt(config.fixedNotional, 2)} USDT` : "等比例跟单"}</strong></div>
               <div class="preview-row"><span>最大杠杆</span><strong>${config.maxLeverage > 0 ? `${fmt(config.maxLeverage, 2)}x` : "不限"}</strong></div>
               <div class="preview-row"><span>账户保护</span><strong>${[config.accountTakeProfitPct ? `止盈 ${config.accountTakeProfitPct}%` : "", config.accountStopLossPct ? `止损 ${config.accountStopLossPct}%` : "", config.maxDrawdownPct ? `回撤 ${config.maxDrawdownPct}%` : ""].filter(Boolean).join(" / ") || "关闭"}</strong></div>
               <div class="preview-row"><span>单仓保护</span><strong>${[config.positionTakeProfitPct ? `止盈 ${config.positionTakeProfitPct}%` : "", config.positionStopLossPct ? `止损 ${config.positionStopLossPct}%` : "", config.trailingStopPct ? `追踪 ${config.trailingStopPct}%` : ""].filter(Boolean).join(" / ") || "关闭"}</strong></div>
@@ -984,7 +991,22 @@
       $("[data-follow-mode='proportional']")?.addEventListener("click", () => {
         $$("[data-follow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.followMode === "proportional"));
       });
+      bindRangeLabel("simAccountTakeProfit");
+      bindRangeLabel("simAccountStopLoss");
+      bindRangeLabel("simMaxDrawdown");
+      bindRangeLabel("simPositionTakeProfit");
+      bindRangeLabel("simPositionStopLoss");
+      bindRangeLabel("simTrailingStop");
       $("#startSim")?.addEventListener("click", startSimulation);
+    }
+
+    function bindRangeLabel(id) {
+      const input = document.getElementById(id);
+      const output = document.querySelector(`output[for="${id}"]`);
+      if (!input || !output) return;
+      const update = () => { output.textContent = num(input.value) > 0 ? `${trim(input.value, 0)}%` : "关闭"; };
+      input.addEventListener("input", update);
+      update();
     }
 
     function renderActive() {
