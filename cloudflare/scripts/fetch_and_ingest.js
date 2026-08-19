@@ -10,7 +10,7 @@ const TRADERS = [
 
 const CONFIG = {
   binanceWebBaseUrl: process.env.BINANCE_WEB_BASE_URL || "https://www.binance.com",
-  binanceFapiBaseUrl: process.env.BINANCE_FAPI_BASE_URL || "https://fapi.binance.com",
+  binanceFapiBaseUrl: process.env.BINANCE_FAPI_BASE_URL || "https://www.binance.com",
   pageSize: Number(process.env.PAGE_SIZE || 100),
   backfillPages: Number(process.env.BACKFILL_PAGES || 6),
   ingestUrl: process.env.LEADER_TRACKER_INGEST_URL || "",
@@ -204,8 +204,38 @@ async function fetchOrderHistoryPage(trader, pageNumber) {
 }
 
 async function fetchMarkPrice(symbol) {
-  const payload = await fetchJson(`${CONFIG.binanceFapiBaseUrl}/fapi/v1/premiumIndex?symbol=${encodeURIComponent(symbol)}`);
-  return toNumber(payload.markPrice);
+  const encoded = encodeURIComponent(symbol);
+  const bases = unique([
+    CONFIG.binanceFapiBaseUrl,
+    CONFIG.binanceWebBaseUrl,
+    "https://www.binance.com",
+    "https://fapi.binance.com"
+  ]);
+  const errors = [];
+
+  for (const base of bases) {
+    try {
+      const payload = await fetchJson(`${base}/fapi/v1/premiumIndex?symbol=${encoded}`);
+      const markPrice = toNumber(payload.markPrice);
+      if (markPrice > 0) return markPrice;
+      errors.push(`${base}: empty markPrice`);
+    } catch (error) {
+      errors.push(`${base}: ${error.message}`);
+    }
+  }
+
+  for (const base of bases) {
+    try {
+      const payload = await fetchJson(`${base}/fapi/v1/ticker/price?symbol=${encoded}`);
+      const price = toNumber(payload.price);
+      if (price > 0) return price;
+      errors.push(`${base}: empty ticker price`);
+    } catch (error) {
+      errors.push(`${base}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Unable to fetch mark price for ${symbol}: ${errors.join("; ")}`);
 }
 
 async function fetchJson(url, options = {}) {
@@ -657,6 +687,10 @@ function toNumber(value) {
   if (value === null || value === undefined || value === "") return 0;
   const parsed = Number(String(value).replace(/,/g, ""));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean).map((value) => String(value).replace(/\/$/, ""))));
 }
 
 function sleep(ms) {

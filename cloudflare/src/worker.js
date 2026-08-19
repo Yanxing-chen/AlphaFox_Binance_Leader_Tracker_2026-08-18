@@ -9,7 +9,7 @@ const TRADERS = [
 const CONFIG = {
   defaultPortfolioId: "5075281354358777856",
   binanceWebBaseUrl: "https://www.binance.com",
-  binanceFapiBaseUrl: "https://fapi.binance.com",
+  binanceFapiBaseUrl: "https://www.binance.com",
   pageSize: 100,
   backfillPages: 6
 };
@@ -379,9 +379,38 @@ async function fetchOrderHistoryPage(env, trader, pageNumber) {
 }
 
 async function fetchMarkPrice(env, symbol) {
-  const base = env.BINANCE_FAPI_BASE_URL || CONFIG.binanceFapiBaseUrl;
-  const payload = await fetchJson(`${base}/fapi/v1/premiumIndex?symbol=${encodeURIComponent(symbol)}`);
-  return toNumber(payload.markPrice);
+  const encoded = encodeURIComponent(symbol);
+  const bases = unique([
+    env.BINANCE_FAPI_BASE_URL || CONFIG.binanceFapiBaseUrl,
+    env.BINANCE_WEB_BASE_URL || CONFIG.binanceWebBaseUrl,
+    "https://www.binance.com",
+    "https://fapi.binance.com"
+  ]);
+  const errors = [];
+
+  for (const base of bases) {
+    try {
+      const payload = await fetchJson(`${base}/fapi/v1/premiumIndex?symbol=${encoded}`);
+      const markPrice = toNumber(payload.markPrice);
+      if (markPrice > 0) return markPrice;
+      errors.push(`${base}: empty markPrice`);
+    } catch (error) {
+      errors.push(`${base}: ${error.message}`);
+    }
+  }
+
+  for (const base of bases) {
+    try {
+      const payload = await fetchJson(`${base}/fapi/v1/ticker/price?symbol=${encoded}`);
+      const price = toNumber(payload.price);
+      if (price > 0) return price;
+      errors.push(`${base}: empty ticker price`);
+    } catch (error) {
+      errors.push(`${base}: ${error.message}`);
+    }
+  }
+
+  throw new Error(`Unable to fetch mark price for ${symbol}: ${errors.join("; ")}`);
 }
 
 async function mergeFreshOrders(env, trader, existing) {
@@ -871,6 +900,10 @@ function getInt(value, fallback) {
 function round(value, digits) {
   const factor = 10 ** digits;
   return Math.round(toNumber(value) * factor) / factor;
+}
+
+function unique(values) {
+  return Array.from(new Set(values.filter(Boolean).map((value) => String(value).replace(/\/$/, ""))));
 }
 
 function safeJson(value) {
