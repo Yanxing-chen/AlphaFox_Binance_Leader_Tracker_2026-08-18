@@ -780,6 +780,7 @@ function buildRecentOpenPositionSeeds(sorted) {
 function buildClosedPositionHistory(sorted) {
   const active = new Map();
   const history = [];
+  let groupCounter = 0;
 
   for (const order of sorted) {
     const symbol = String(order.symbol || "").toUpperCase();
@@ -794,6 +795,7 @@ function buildClosedPositionHistory(sorted) {
     leg.orderCount += 1;
 
     if (isOpenOrder(order)) {
+      if (!leg.positionGroupId) ensureLegGroup(leg, symbol, positionSide, timestamp, ++groupCounter);
       const nextQty = leg.qty + qty;
       leg.avgPrice = nextQty > 0 ? ((leg.avgPrice * leg.qty) + (price * qty)) / nextQty : price;
       leg.qty = nextQty;
@@ -811,18 +813,30 @@ function buildClosedPositionHistory(sorted) {
       ? "平仓记录"
       : remainingQty > 1e-8
         ? "部分平仓"
-        : "完全平仓";
+        : "最终平仓";
+    const positionGroupId = hasOpenBasis
+      ? leg.positionGroupId
+      : `${symbol}|${positionSide}|unknown|${timestamp}`;
+    const closeSequence = hasOpenBasis ? leg.closeEvents + 1 : 1;
 
     history.push({
       symbol: leg.symbol,
       baseAsset: leg.baseAsset,
       side: leg.positionSide,
+      positionGroupId,
+      positionGroupLabel: hasOpenBasis ? `第 ${leg.groupIndex} 轮` : "无法归组",
+      closeSequence,
       status,
+      groupStatus: hasOpenBasis ? "仍有剩余" : "资料不足",
       realizedPnl,
       openPrice: leg.avgPrice || price,
       closeAvgPrice: price,
       closedQty,
       remainingQty,
+      finalRemainingQty: remainingQty,
+      totalClosedQty: closedQty,
+      totalRealizedPnl: realizedPnl,
+      groupCloseCount: closeSequence,
       maxQty: leg.maxQty || beforeQty || closedQty,
       openTime: leg.openTime || timestamp,
       closeTime: timestamp,
@@ -835,9 +849,16 @@ function buildClosedPositionHistory(sorted) {
     leg.closeValue += closedQty * price;
     leg.qty = remainingQty;
     leg.closeTime = timestamp;
+    leg.closeEvents = closeSequence;
+    updateGroupRows(history, leg, remainingQty > 1e-8 ? "仍有剩余" : "已全部平仓");
 
     if (leg.qty <= 1e-8) {
       active.set(key, newLeg(symbol, order.baseAsset, positionSide));
+    }
+  }
+  for (const leg of active.values()) {
+    if (leg.positionGroupId && leg.closeEvents > 0 && leg.qty > 1e-8) {
+      updateGroupRows(history, leg, "仍有剩余");
     }
   }
   return history.sort((a, b) => b.closeTime - a.closeTime);
@@ -855,8 +876,28 @@ function newLeg(symbol, baseAsset, positionSide) {
     closeQty: 0,
     closeValue: 0,
     realizedPnl: 0,
-    orderCount: 0
+    orderCount: 0,
+    positionGroupId: "",
+    groupIndex: 0,
+    closeEvents: 0
   };
+}
+
+function ensureLegGroup(leg, symbol, positionSide, timestamp, groupIndex) {
+  if (leg.positionGroupId) return;
+  leg.positionGroupId = `${symbol}|${positionSide}|${timestamp}|${groupIndex}`;
+  leg.groupIndex = groupIndex;
+}
+
+function updateGroupRows(history, leg, groupStatus) {
+  for (const item of history) {
+    if (item.positionGroupId !== leg.positionGroupId) continue;
+    item.groupStatus = groupStatus;
+    item.finalRemainingQty = leg.qty;
+    item.totalClosedQty = leg.closeQty;
+    item.totalRealizedPnl = leg.realizedPnl;
+    item.groupCloseCount = leg.closeEvents;
+  }
 }
 
 function buildAssetPreference(orders) {
@@ -937,10 +978,14 @@ async function snapshotHash(snapshot) {
     closedPositionHistory: (snapshot.closedPositionHistory || []).map((item) => ({
       symbol: item.symbol,
       side: item.side,
+      positionGroupId: item.positionGroupId,
+      closeSequence: item.closeSequence,
       status: item.status,
+      groupStatus: item.groupStatus,
       closeTime: item.closeTime,
       closedQty: round(item.closedQty, 8),
       remainingQty: round(item.remainingQty, 8),
+      finalRemainingQty: round(item.finalRemainingQty, 8),
       realizedPnl: round(item.realizedPnl, 8)
     })),
     positions: snapshot.positions.map((position) => ({

@@ -77,9 +77,12 @@
     .chip.long { background: var(--green); color: #fff; }
     .chip.partial { background: #fff3bf; color: #7a5a00; }
     .chip.closed { background: #eef1f4; color: #565d67; }
+    .chip.open-group { background: #e8f7ef; color: #12784e; }
+    .chip.done-group { background: #eef1f4; color: #565d67; }
+    .chip.unknown-group { background: #f5edf8; color: #77438b; }
     .position-main { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
     .table-wrap { overflow: auto; }
-    table { width: 100%; border-collapse: collapse; min-width: 880px; }
+    table { width: 100%; border-collapse: collapse; min-width: 1080px; }
     th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-size: 13px; }
     th { color: var(--muted); background: #fbfbfc; font-size: 12px; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
@@ -351,6 +354,22 @@
     function sideClass(side) { return String(side).toUpperCase() === "LONG" ? "long" : "short"; }
     function historyStatusClass(status) { return status === "部分平仓" ? "partial" : "closed"; }
     function remainingQtyText(item) { return num(item.remainingQty) > 0 ? `${trim(item.remainingQty, 4)} ${item.baseAsset}` : "--"; }
+    function finalRemainingQtyText(item) { return num(item.finalRemainingQty ?? item.remainingQty) > 0 ? `${trim(item.finalRemainingQty ?? item.remainingQty, 4)} ${item.baseAsset}` : "--"; }
+    function groupStatusText(item) {
+      if (item.groupStatus) return item.groupStatus;
+      if (!item.hasOpenBasis) return "资料不足";
+      return num(item.finalRemainingQty ?? item.remainingQty) > 0 ? "仍有剩余" : "已全部平仓";
+    }
+    function groupStatusClass(item) {
+      const status = groupStatusText(item);
+      if (status === "仍有剩余") return "open-group";
+      if (status === "已全部平仓") return "done-group";
+      return "unknown-group";
+    }
+    function positionGroupText(item) {
+      const sequence = num(item.closeSequence) ? `第 ${trim(item.closeSequence, 0)} 次平仓` : "平仓记录";
+      return `${item.positionGroupLabel || "同组"} · ${sequence}`;
+    }
     function orderAction(order) {
       const pos = String(order.positionSide || "").toUpperCase();
       const side = String(order.side || "").toUpperCase();
@@ -821,22 +840,38 @@
 
     function renderHistory() {
       const rows = snapshot.closedPositionHistory || [];
-      const tableRows = rows.map((item) => `<tr><td>${item.symbol}</td><td><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></td><td><span class="chip ${historyStatusClass(item.status)}">${item.status || "平仓记录"}</span></td><td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td><td>${trim(item.closedQty, 4)} ${item.baseAsset}</td><td>${remainingQtyText(item)}</td><td>${fmt(item.openPrice, 5)}</td><td>${fmt(item.closeAvgPrice, 5)}</td><td>${dt(item.openTime)}</td><td>${dt(item.closeTime)}</td></tr>`).join("");
+      const tableRows = rows.map((item) => `<tr>
+        <td>${item.symbol}</td>
+        <td><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></td>
+        <td>${positionGroupText(item)}</td>
+        <td><span class="chip ${historyStatusClass(item.status)}">${item.status || "平仓记录"}</span></td>
+        <td><span class="chip ${groupStatusClass(item)}">${groupStatusText(item)}</span></td>
+        <td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td>
+        <td>${trim(item.closedQty, 4)} ${item.baseAsset}</td>
+        <td>${remainingQtyText(item)}</td>
+        <td>${finalRemainingQtyText(item)}</td>
+        <td>${fmt(item.openPrice, 5)}</td>
+        <td>${fmt(item.closeAvgPrice, 5)}</td>
+        <td>${dt(item.closeTime)}</td>
+      </tr>`).join("");
       const mobileRows = rows.map((item) => `<article class="history-card">
         <div class="history-top">
-          <div><div class="history-symbol">${item.symbol}</div><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span> <span class="chip ${historyStatusClass(item.status)}">${item.status || "平仓记录"}</span></div>
+          <div><div class="history-symbol">${item.symbol}</div><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span> <span class="chip ${historyStatusClass(item.status)}">${item.status || "平仓记录"}</span> <span class="chip ${groupStatusClass(item)}">${groupStatusText(item)}</span></div>
           <div class="history-pnl ${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</div>
         </div>
+        <div class="note">${positionGroupText(item)}</div>
         <div class="history-grid">
-          <div class="mini-field"><span>已平仓量</span><strong>${trim(item.closedQty, 4)} ${item.baseAsset}</strong></div>
-          <div class="mini-field"><span>剩余持仓</span><strong>${remainingQtyText(item)}</strong></div>
+          <div class="mini-field"><span>本次平仓量</span><strong>${trim(item.closedQty, 4)} ${item.baseAsset}</strong></div>
+          <div class="mini-field"><span>本次后剩余</span><strong>${remainingQtyText(item)}</strong></div>
+          <div class="mini-field"><span>整组最终剩余</span><strong>${finalRemainingQtyText(item)}</strong></div>
+          <div class="mini-field"><span>整组已平次数</span><strong>${trim(item.groupCloseCount || item.closeSequence || 1, 0)} 次</strong></div>
           <div class="mini-field"><span>开仓价</span><strong>${fmt(item.openPrice, 5)}</strong></div>
           <div class="mini-field"><span>平仓均价</span><strong>${fmt(item.closeAvgPrice, 5)}</strong></div>
           <div class="mini-field"><span>开仓时间</span><strong>${dt(item.openTime)}</strong></div>
           <div class="mini-field"><span>平仓时间</span><strong>${dt(item.closeTime)}</strong></div>
         </div>
       </article>`).join("");
-      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">每次平仓都会记录，部分平仓会显示剩余持仓</span></div><div class="table-wrap desktop-table"><table><thead><tr><th>合约</th><th>方向</th><th>状态</th><th>平仓盈亏</th><th>已平仓量</th><th>剩余持仓</th><th>开仓价</th><th>平仓均价</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? tableRows : `<tr><td colspan="10"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div><div class="mobile-cards">${rows.length ? mobileRows : `<div class="empty">暂无仓位历史</div>`}</div></section>`;
+      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">按同一轮开仓分组，能区分本次平仓与整组最终状态</span></div><div class="table-wrap desktop-table"><table><thead><tr><th>合约</th><th>方向</th><th>仓位组</th><th>本次动作</th><th>整组状态</th><th>本次盈亏</th><th>本次平仓</th><th>本次后剩余</th><th>整组最终剩余</th><th>开仓价</th><th>平仓价</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? tableRows : `<tr><td colspan="12"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div><div class="mobile-cards">${rows.length ? mobileRows : `<div class="empty">暂无仓位历史</div>`}</div></section>`;
     }
 
     function renderRecords() {
