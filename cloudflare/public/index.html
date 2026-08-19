@@ -98,6 +98,42 @@
     .sim-position-list { display: grid; gap: 10px; }
     .sim-position { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; }
     .sim-position-grid { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 8px; }
+    .setup-grid { display: grid; grid-template-columns: minmax(0, 1fr) minmax(360px, .55fr); gap: 16px; }
+    .setup-form { display: grid; gap: 14px; }
+    .form-block { border: 1px solid var(--line); border-radius: var(--radius); padding: 14px; display: grid; gap: 12px; background: #fff; }
+    .form-block h3 { margin: 0; font-size: 14px; line-height: 1.2; }
+    .field-grid { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 10px; }
+    .field { display: grid; gap: 6px; min-width: 0; }
+    .field label { color: var(--muted); font-size: 12px; line-height: 1.25; }
+    .field input, .field select {
+      width: 100%;
+      min-height: 38px;
+      border: 1px solid var(--line);
+      border-radius: 7px;
+      padding: 8px 10px;
+      color: var(--ink);
+      background: #fbfbfc;
+      font: inherit;
+      font-size: 14px;
+      outline: none;
+    }
+    .field input:focus, .field select:focus { border-color: #d0a500; box-shadow: 0 0 0 3px rgba(244,194,27,.16); }
+    .segmented { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 6px; padding: 4px; border-radius: var(--radius); background: var(--soft); }
+    .segmented button { min-height: 36px; border-radius: 7px; color: var(--muted); font-size: 13px; font-weight: 720; }
+    .segmented button.active { background: #fff; color: var(--ink); box-shadow: 0 1px 4px rgba(0,0,0,.08); }
+    .switch-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 9px 0; border-top: 1px solid var(--line); }
+    .switch-row:first-child { border-top: 0; padding-top: 0; }
+    .switch-row strong { font-size: 13px; }
+    .switch-row span { display: block; margin-top: 3px; color: var(--muted); font-size: 12px; line-height: 1.35; }
+    .switch { width: 44px; height: 24px; border-radius: 999px; background: #dfe4ea; padding: 3px; flex: 0 0 auto; }
+    .switch i { display: block; width: 18px; height: 18px; border-radius: 50%; background: #fff; box-shadow: 0 1px 3px rgba(0,0,0,.18); transition: transform .18s ease; }
+    .switch.active { background: var(--yellow); }
+    .switch.active i { transform: translateX(20px); }
+    .preview-list { display: grid; gap: 9px; }
+    .preview-row { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; padding-bottom: 9px; border-bottom: 1px solid var(--line); }
+    .preview-row:last-child { border-bottom: 0; padding-bottom: 0; }
+    .preview-row span { color: var(--muted); font-size: 12px; }
+    .preview-row strong { font-size: 15px; text-align: right; }
     .mobile-cards { display: none; }
     .history-card { border: 1px solid var(--line); border-radius: var(--radius); padding: 12px; display: grid; gap: 10px; background: #fff; }
     .history-top { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
@@ -202,6 +238,10 @@
       .sim-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .sim-position-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 8px; }
       .sim-ledger { max-height: none; }
+      .setup-grid { grid-template-columns: 1fr; gap: 10px; }
+      .field-grid { grid-template-columns: 1fr; gap: 8px; }
+      .form-block { padding: 12px; border-radius: 12px; }
+      .segmented button { font-size: 12px; }
       .position-card { margin-bottom: 10px; padding: 12px; gap: 12px; border: 1px solid var(--line); border-radius: 12px; background: #fff; }
       .symbol-line { gap: 6px; font-size: 17px; }
       .chip { min-height: 22px; padding: 4px 7px; border-radius: 6px; font-size: 11px; }
@@ -270,6 +310,21 @@
     let traderList = [];
     const SIM_STORAGE_KEY = "leaderTrackerSimulations:v2";
     const SIM_STARTING_BALANCE = 10000;
+    const DEFAULT_SIM_CONFIG = {
+      followMode: "proportional",
+      fixedNotional: 100,
+      maxLeverage: 10,
+      maxSlippagePct: 0.5,
+      maxOrderNotional: 0,
+      accountTakeProfitPct: 0,
+      accountStopLossPct: 0,
+      maxDrawdownPct: 0,
+      positionTakeProfitPct: 0,
+      positionStopLossPct: 0,
+      trailingStopPct: 0,
+      onlyNewOrders: true,
+      chaseExisting: false
+    };
     let simulations = readSimulations();
 
     function num(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
@@ -313,6 +368,40 @@
       return simulations[activePortfolioId] || null;
     }
 
+    function fieldNumber(id, fallback = 0) {
+      const element = document.getElementById(id);
+      const parsed = Number(element?.value);
+      return Number.isFinite(parsed) ? parsed : fallback;
+    }
+
+    function fieldText(id, fallback = "") {
+      const value = document.getElementById(id)?.value;
+      return value && String(value).trim() ? String(value).trim() : fallback;
+    }
+
+    function activeFollowMode() {
+      return document.querySelector("[data-follow-mode].active")?.dataset.followMode || "proportional";
+    }
+
+    function buildConfigFromForm() {
+      return {
+        ...DEFAULT_SIM_CONFIG,
+        followMode: activeFollowMode(),
+        fixedNotional: Math.max(1, fieldNumber("simFixedNotional", DEFAULT_SIM_CONFIG.fixedNotional)),
+        maxLeverage: Math.max(0, fieldNumber("simMaxLeverage", DEFAULT_SIM_CONFIG.maxLeverage)),
+        maxSlippagePct: Math.max(0, fieldNumber("simMaxSlippage", DEFAULT_SIM_CONFIG.maxSlippagePct)),
+        maxOrderNotional: Math.max(0, fieldNumber("simMaxOrderNotional", DEFAULT_SIM_CONFIG.maxOrderNotional)),
+        accountTakeProfitPct: Math.max(0, fieldNumber("simAccountTakeProfit", DEFAULT_SIM_CONFIG.accountTakeProfitPct)),
+        accountStopLossPct: Math.max(0, fieldNumber("simAccountStopLoss", DEFAULT_SIM_CONFIG.accountStopLossPct)),
+        maxDrawdownPct: Math.max(0, fieldNumber("simMaxDrawdown", DEFAULT_SIM_CONFIG.maxDrawdownPct)),
+        positionTakeProfitPct: Math.max(0, fieldNumber("simPositionTakeProfit", DEFAULT_SIM_CONFIG.positionTakeProfitPct)),
+        positionStopLossPct: Math.max(0, fieldNumber("simPositionStopLoss", DEFAULT_SIM_CONFIG.positionStopLossPct)),
+        trailingStopPct: Math.max(0, fieldNumber("simTrailingStop", DEFAULT_SIM_CONFIG.trailingStopPct)),
+        onlyNewOrders: true,
+        chaseExisting: false
+      };
+    }
+
     function simOrderKey(order) {
       return [
         order.orderUpdateTime || order.time || "",
@@ -354,16 +443,21 @@
       if (!snapshot) return;
       const detail = snapshot.detail || {};
       const leaderBalance = Math.max(1, num(snapshot.marginBalance));
+      const initialBalance = Math.max(1, fieldNumber("simInitialBalance", SIM_STARTING_BALANCE));
+      const config = buildConfigFromForm();
       const sim = {
         version: 2,
         portfolioId: activePortfolioId,
         label: detail.nickname || traderList.find((item) => item.portfolioId === activePortfolioId)?.label || "带单员",
+        accountName: fieldText("simAccountName", `模拟盘 ${new Date().toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}`),
         status: "active",
         startedAt: Date.now(),
-        initialBalance: SIM_STARTING_BALANCE,
-        realizedBalance: SIM_STARTING_BALANCE,
+        initialBalance,
+        realizedBalance: initialBalance,
         realizedPnl: 0,
-        copyRatio: SIM_STARTING_BALANCE / leaderBalance,
+        copyRatio: initialBalance / leaderBalance,
+        peakEquity: initialBalance,
+        config,
         processed: {},
         positions: {},
         events: []
@@ -404,6 +498,7 @@
       sim.processed ||= {};
       sim.positions ||= {};
       sim.events ||= [];
+      sim.config = { ...DEFAULT_SIM_CONFIG, ...(sim.config || {}) };
 
       const orders = [...(data.latestOrders || [])]
         .filter((order) => orderTime(order) > sim.startedAt)
@@ -419,7 +514,10 @@
       const marks = markMap(data);
       for (const pos of Object.values(sim.positions)) {
         pos.markPrice = marks.get(`${pos.symbol}|${pos.side}`) || pos.markPrice || pos.avgPrice;
+        const roi = positionRoi(pos);
+        pos.bestRoi = Math.max(num(pos.bestRoi), roi);
       }
+      enforceSimulationRisk(sim);
       sim.lastUpdatedAt = Date.now();
       saveSimulations();
     }
@@ -427,19 +525,25 @@
     function applySimOrder(sim, order) {
       const symbol = String(order.symbol || "").toUpperCase();
       const side = String(order.positionSide || "").toUpperCase();
-      const qty = orderQty(order) * num(sim.copyRatio);
+      const leaderQty = orderQty(order);
       const price = orderPrice(order);
-      if (!symbol || !side || !qty || !price) return;
+      if (!symbol || !side || !leaderQty || !price) return;
       const key = `${symbol}|${side}`;
       const asset = order.baseAsset || symbol.replace(/USDT$/, "");
       const opened = isOpenOrder(order);
 
       if (opened) {
+        const qty = calculateOpenQty(sim, order, price);
+        if (!qty) {
+          pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `触发最大杠杆或单笔限制，已跳过`, 0, orderTime(order));
+          return;
+        }
         const pos = sim.positions[key] || {
           symbol,
           baseAsset: asset,
           side,
           qty: 0,
+          leaderQty: 0,
           avgPrice: 0,
           markPrice: price,
           openedAt: orderTime(order)
@@ -447,7 +551,9 @@
         const nextQty = pos.qty + qty;
         pos.avgPrice = nextQty > 0 ? ((pos.avgPrice * pos.qty) + (price * qty)) / nextQty : price;
         pos.qty = nextQty;
+        pos.leaderQty = num(pos.leaderQty) + leaderQty;
         pos.markPrice = price;
+        pos.bestRoi = Math.max(num(pos.bestRoi), positionRoi(pos));
         sim.positions[key] = pos;
         pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `数量 ${trim(qty, 4)} ${asset}，均价 ${fmt(price, 5)}`, 0, orderTime(order));
         return;
@@ -458,16 +564,94 @@
         pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `这是启动前旧仓位的平仓，本模拟账户没有追入，已跳过`, 0, orderTime(order));
         return;
       }
-      const closeQty = Math.min(pos.qty, qty);
+      const closeRatio = Math.min(1, leaderQty / Math.max(leaderQty, num(pos.leaderQty)));
+      const closeQty = Math.min(pos.qty, pos.qty * closeRatio);
       const pnl = side === "LONG"
         ? (price - pos.avgPrice) * closeQty
         : (pos.avgPrice - price) * closeQty;
       pos.qty -= closeQty;
+      pos.leaderQty = Math.max(0, num(pos.leaderQty) - leaderQty);
       pos.markPrice = price;
       sim.realizedPnl = num(sim.realizedPnl) + pnl;
       sim.realizedBalance = num(sim.realizedBalance) + pnl;
       if (pos.qty <= 1e-8) delete sim.positions[key];
       pushSimEvent(sim, `${orderAction(order)} ${symbol}`, `数量 ${trim(closeQty, 4)} ${asset}，均价 ${fmt(price, 5)}`, pnl, orderTime(order));
+    }
+
+    function calculateOpenQty(sim, order, price) {
+      const config = { ...DEFAULT_SIM_CONFIG, ...(sim.config || {}) };
+      let notional = config.followMode === "fixed"
+        ? num(config.fixedNotional)
+        : orderQty(order) * price * num(sim.copyRatio);
+      if (config.maxOrderNotional > 0) notional = Math.min(notional, config.maxOrderNotional);
+      if (config.maxLeverage > 0) {
+        const summary = simSummary(sim);
+        const maxNotional = summary.equity * config.maxLeverage;
+        const available = Math.max(0, maxNotional - summary.notional);
+        notional = Math.min(notional, available);
+      }
+      return notional > 0 ? notional / price : 0;
+    }
+
+    function positionPnl(pos) {
+      const markPrice = num(pos.markPrice || pos.avgPrice);
+      return pos.side === "LONG"
+        ? (markPrice - pos.avgPrice) * pos.qty
+        : (pos.avgPrice - markPrice) * pos.qty;
+    }
+
+    function positionRoi(pos) {
+      const notional = num(pos.markPrice || pos.avgPrice) * num(pos.qty);
+      return notional > 0 ? positionPnl(pos) / notional * 100 : 0;
+    }
+
+    function closeSimPosition(sim, key, reason, time = Date.now()) {
+      const pos = sim.positions[key];
+      if (!pos) return;
+      const pnl = positionPnl(pos);
+      sim.realizedPnl = num(sim.realizedPnl) + pnl;
+      sim.realizedBalance = num(sim.realizedBalance) + pnl;
+      pushSimEvent(sim, `${reason} ${pos.symbol}`, `按标记价格 ${fmt(pos.markPrice, 5)} 模拟平仓`, pnl, time);
+      delete sim.positions[key];
+    }
+
+    function enforceSimulationRisk(sim) {
+      const config = { ...DEFAULT_SIM_CONFIG, ...(sim.config || {}) };
+      const summary = simSummary(sim);
+      sim.peakEquity = Math.max(num(sim.peakEquity || sim.initialBalance), summary.equity);
+
+      for (const [key, pos] of Object.entries(sim.positions || {})) {
+        const roi = positionRoi(pos);
+        pos.bestRoi = Math.max(num(pos.bestRoi), roi);
+        if (config.positionTakeProfitPct > 0 && roi >= config.positionTakeProfitPct) {
+          closeSimPosition(sim, key, "单仓止盈", Date.now());
+          continue;
+        }
+        if (config.positionStopLossPct > 0 && roi <= -config.positionStopLossPct) {
+          closeSimPosition(sim, key, "单仓止损", Date.now());
+          continue;
+        }
+        if (config.trailingStopPct > 0 && num(pos.bestRoi) > 0 && num(pos.bestRoi) - roi >= config.trailingStopPct) {
+          closeSimPosition(sim, key, "单仓追踪止损", Date.now());
+        }
+      }
+
+      const afterPositionRisk = simSummary(sim);
+      const roi = (afterPositionRisk.equity - num(sim.initialBalance)) / num(sim.initialBalance) * 100;
+      const drawdown = sim.peakEquity > 0 ? (sim.peakEquity - afterPositionRisk.equity) / sim.peakEquity * 100 : 0;
+      if (config.accountTakeProfitPct > 0 && roi >= config.accountTakeProfitPct) {
+        sim.status = "stopped";
+        sim.stopReason = `账户止盈 +${fmt(config.accountTakeProfitPct, 2)}%`;
+        pushSimEvent(sim, "账户止盈停止跟单", `模拟权益达到 ${fmt(afterPositionRisk.equity, 2)} USDT`, 0, Date.now());
+      } else if (config.accountStopLossPct > 0 && roi <= -config.accountStopLossPct) {
+        sim.status = "stopped";
+        sim.stopReason = `账户止损 -${fmt(config.accountStopLossPct, 2)}%`;
+        pushSimEvent(sim, "账户止损停止跟单", `模拟权益跌至 ${fmt(afterPositionRisk.equity, 2)} USDT`, 0, Date.now());
+      } else if (config.maxDrawdownPct > 0 && drawdown >= config.maxDrawdownPct) {
+        sim.status = "stopped";
+        sim.stopReason = `最大回撤 ${fmt(config.maxDrawdownPct, 2)}%`;
+        pushSimEvent(sim, "最大回撤停止跟单", `从最高权益回撤 ${fmt(drawdown, 2)}%`, 0, Date.now());
+      }
     }
 
     function pushSimEvent(sim, title, detail, pnl, time) {
@@ -652,34 +836,95 @@
       const detail = snapshot.detail || {};
       const sim = currentSimulation();
       if (!sim) {
-        content.innerHTML = `<section class="panel">
-          <div class="section-head"><h2>模拟跟单</h2><span class="note">个人纸面账户，本浏览器保存</span></div>
-          <div class="section-body sim-layout">
-            <div class="sim-stack">
-              <div class="metric"><span class="label">当前交易员</span><strong class="value">${detail.nickname || "Binance 带单员"}</strong></div>
-              <div class="metric"><span class="label">启动资金</span><strong class="value">${fmt(SIM_STARTING_BALANCE, 2)}<span class="unit">USDT</span></strong></div>
-              <div class="metric"><span class="label">模拟模式</span><strong class="value small">不追旧仓位，只跟启动后的新开仓</strong></div>
-              <div class="sim-actions"><button class="btn primary" id="startSim">开始模拟跟单</button></div>
-            </div>
-            <div class="panel">
-              <div class="section-head"><h2>跟单规则</h2></div>
-              <div class="section-body record-list">
-                <article class="record"><div><strong>资金比例</strong><p>用 10,000 USDT 对比带单员当前保证金余额，得到固定跟单比例。</p></div></article>
-                <article class="record"><div><strong>开平仓</strong><p>启动前已经存在的仓位视为错过信号，不按现价补跟；只跟启动后的新开仓记录。</p></div></article>
-                <article class="record"><div><strong>风险边界</strong><p>这是纸面模拟，不会连接你的币安账户，也不会真实下单。</p></div></article>
+        const todayName = `模拟盘 ${new Date().toLocaleDateString("zh-CN", { month: "2-digit", day: "2-digit" })}`;
+        const traderName = detail.nickname || traderList.find((item) => item.portfolioId === activePortfolioId)?.label || "Binance 带单员";
+        content.innerHTML = `<section class="setup-grid">
+          <div class="panel">
+            <div class="section-head"><h2>新建模拟跟单</h2><span class="note">普通跟单策略 · 个人纸面账户</span></div>
+            <div class="section-body setup-form">
+              <div class="form-block">
+                <h3>1. 基础配置</h3>
+                <div class="field-grid">
+                  <div class="field"><label for="simAccountName">账户名称</label><input id="simAccountName" value="${todayName}" /></div>
+                  <div class="field"><label for="simInitialBalance">初始资金 USDT</label><input id="simInitialBalance" type="number" min="1" step="100" value="${SIM_STARTING_BALANCE}" /></div>
+                </div>
+                <div class="field">
+                  <label>信号源</label>
+                  <input value="${traderName} · ${activePortfolioId}" disabled />
+                </div>
+              </div>
+
+              <div class="form-block">
+                <h3>2. 仓位跟随模式</h3>
+                <div class="segmented">
+                  <button type="button" class="active" data-follow-mode="proportional">等比例跟单</button>
+                  <button type="button" data-follow-mode="fixed">固定名义价值</button>
+                </div>
+                <div class="field-grid">
+                  <div class="field"><label for="simFixedNotional">固定名义价值 USDT</label><input id="simFixedNotional" type="number" min="1" step="10" value="100" /></div>
+                  <div class="field"><label for="simMaxOrderNotional">单笔上限 USDT，0 为不限</label><input id="simMaxOrderNotional" type="number" min="0" step="10" value="0" /></div>
+                </div>
+                <div class="switch-row">
+                  <div><strong>只跟新开仓</strong><span>启动前已经存在的仓位视为错过信号，不按现价补追。</span></div>
+                  <button type="button" class="switch active" aria-label="只跟新开仓"><i></i></button>
+                </div>
+              </div>
+
+              <div class="form-block">
+                <h3>3. 下单风控</h3>
+                <div class="field-grid">
+                  <div class="field"><label for="simMaxLeverage">账户最大杠杆</label><input id="simMaxLeverage" type="number" min="0" step="0.5" value="10" /></div>
+                  <div class="field"><label for="simMaxSlippage">最大滑点 %</label><input id="simMaxSlippage" type="number" min="0" step="0.1" value="0.5" /></div>
+                </div>
+              </div>
+
+              <div class="form-block">
+                <h3>4. 账户保护</h3>
+                <div class="field-grid">
+                  <div class="field"><label for="simAccountTakeProfit">账户止盈 %，0 为关闭</label><input id="simAccountTakeProfit" type="number" min="0" step="1" value="0" /></div>
+                  <div class="field"><label for="simAccountStopLoss">账户止损 %，0 为关闭</label><input id="simAccountStopLoss" type="number" min="0" step="1" value="0" /></div>
+                  <div class="field"><label for="simMaxDrawdown">最大回撤 %，0 为关闭</label><input id="simMaxDrawdown" type="number" min="0" step="1" value="0" /></div>
+                </div>
+              </div>
+
+              <div class="form-block">
+                <h3>5. 单仓保护</h3>
+                <div class="field-grid">
+                  <div class="field"><label for="simPositionTakeProfit">单仓止盈 %，0 为关闭</label><input id="simPositionTakeProfit" type="number" min="0" step="1" value="0" /></div>
+                  <div class="field"><label for="simPositionStopLoss">单仓止损 %，0 为关闭</label><input id="simPositionStopLoss" type="number" min="0" step="1" value="0" /></div>
+                  <div class="field"><label for="simTrailingStop">单仓追踪止损 %，0 为关闭</label><input id="simTrailingStop" type="number" min="0" step="1" value="0" /></div>
+                </div>
               </div>
             </div>
           </div>
+
+          <aside class="panel">
+            <div class="section-head"><h2>确认并启动</h2><span class="note">不连接真实交易所</span></div>
+            <div class="section-body sim-stack">
+              <div class="preview-list">
+                <div class="preview-row"><span>策略类型</span><strong>普通模拟跟单</strong></div>
+                <div class="preview-row"><span>信号源</span><strong>${traderName}</strong></div>
+                <div class="preview-row"><span>启动规则</span><strong>只跟新开仓</strong></div>
+                <div class="preview-row"><span>数据来源</span><strong>Binance 公开订单</strong></div>
+              </div>
+              <div class="record-list">
+                <article class="record"><div><strong>不会补追旧仓</strong><p>如果熬鹰资本已经在 1120 开仓，你现在才启动模拟，不会按 1170 现价追进去。</p></div></article>
+                <article class="record"><div><strong>不会真实下单</strong><p>这是本浏览器里的模拟账户，不读取你的交易所 API，也不会碰真实资金。</p></div></article>
+              </div>
+              <button class="btn primary" id="startSim">保存并启动模拟</button>
+            </div>
+          </aside>
         </section>`;
-        $("#startSim")?.addEventListener("click", startSimulation);
+        bindSimulatorSetup();
         return;
       }
 
       const summary = simSummary(sim);
-      const statusText = sim.status === "active" ? "跟单中" : "已暂停";
+      const config = { ...DEFAULT_SIM_CONFIG, ...(sim.config || {}) };
+      const statusText = sim.status === "active" ? "跟单中" : sim.status === "stopped" ? "已停止" : "已暂停";
       content.innerHTML = `<section class="sim-layout">
         <div class="panel sim-summary">
-          <div class="section-head"><h2>模拟跟单</h2><span class="note">${statusText}</span></div>
+          <div class="section-head"><h2>${sim.accountName || "模拟跟单"}</h2><span class="note">${statusText}${sim.stopReason ? ` · ${sim.stopReason}` : ""}</span></div>
           <div class="section-body sim-stack">
             <div class="sim-grid">
               <div class="metric"><span class="label">模拟权益</span><strong class="value ${pnlClass(summary.equity - sim.initialBalance)}">${fmt(summary.equity, 2)}<span class="unit">USDT</span></strong></div>
@@ -691,8 +936,14 @@
               <div class="metric"><span class="label">跟单比例</span><strong class="value">${fmt(sim.copyRatio * 100, 2)}%</strong></div>
               <div class="metric"><span class="label">开始时间</span><strong class="value small">${dt(sim.startedAt)}</strong></div>
             </div>
+            <div class="preview-list">
+              <div class="preview-row"><span>跟单模式</span><strong>${config.followMode === "fixed" ? `固定 ${fmt(config.fixedNotional, 2)} USDT` : "等比例跟单"}</strong></div>
+              <div class="preview-row"><span>最大杠杆</span><strong>${config.maxLeverage > 0 ? `${fmt(config.maxLeverage, 2)}x` : "不限"}</strong></div>
+              <div class="preview-row"><span>账户保护</span><strong>${[config.accountTakeProfitPct ? `止盈 ${config.accountTakeProfitPct}%` : "", config.accountStopLossPct ? `止损 ${config.accountStopLossPct}%` : "", config.maxDrawdownPct ? `回撤 ${config.maxDrawdownPct}%` : ""].filter(Boolean).join(" / ") || "关闭"}</strong></div>
+              <div class="preview-row"><span>单仓保护</span><strong>${[config.positionTakeProfitPct ? `止盈 ${config.positionTakeProfitPct}%` : "", config.positionStopLossPct ? `止损 ${config.positionStopLossPct}%` : "", config.trailingStopPct ? `追踪 ${config.trailingStopPct}%` : ""].filter(Boolean).join(" / ") || "关闭"}</strong></div>
+            </div>
             <div class="sim-actions">
-              ${sim.status === "active" ? `<button class="btn" id="stopSim">暂停跟单</button>` : `<button class="btn primary" id="resumeSim">继续跟单</button>`}
+              ${sim.status === "active" ? `<button class="btn" id="stopSim">暂停跟单</button>` : sim.status === "paused" ? `<button class="btn primary" id="resumeSim">继续跟单</button>` : ""}
               <button class="btn" id="resetSim">重置账户</button>
             </div>
           </div>
@@ -724,6 +975,16 @@
       $("#stopSim")?.addEventListener("click", stopSimulation);
       $("#resumeSim")?.addEventListener("click", resumeSimulation);
       $("#resetSim")?.addEventListener("click", resetSimulation);
+    }
+
+    function bindSimulatorSetup() {
+      $("[data-follow-mode='fixed']")?.addEventListener("click", () => {
+        $$("[data-follow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.followMode === "fixed"));
+      });
+      $("[data-follow-mode='proportional']")?.addEventListener("click", () => {
+        $$("[data-follow-mode]").forEach((button) => button.classList.toggle("active", button.dataset.followMode === "proportional"));
+      });
+      $("#startSim")?.addEventListener("click", startSimulation);
     }
 
     function renderActive() {
