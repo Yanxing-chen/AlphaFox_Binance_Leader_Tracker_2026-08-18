@@ -20,6 +20,7 @@ const CONFIG = {
   traderIds: (process.env.TRADER_IDS || "").split(",").map((item) => item.trim()).filter(Boolean),
   dryRun: process.argv.includes("--dry-run")
 };
+const CLOSED_PORTFOLIO_CODES = new Set(["11012028"]);
 
 main().catch((error) => {
   console.error(error.stack || error.message);
@@ -41,21 +42,34 @@ async function main() {
 
   const snapshots = [];
   const uploadResults = [];
+  const skipped = [];
   for (const trader of selectedTraders) {
-    console.log(`Fetching ${trader.label} (${trader.portfolioId})`);
-    const detail = await fetchLeaderDetail(trader);
-    const orders = await fetchOrders(trader);
-    const snapshot = await buildSnapshot(trader, detail, orders);
-    snapshots.push(snapshot);
-    console.log(`  positions=${snapshot.positions.length} latest=${snapshot.latestOrders.length} orders=${snapshot.ordersStored}`);
+    try {
+      console.log(`Fetching ${trader.label} (${trader.portfolioId})`);
+      const detail = await fetchLeaderDetail(trader);
+      const orders = await fetchOrders(trader);
+      const snapshot = await buildSnapshot(trader, detail, orders);
+      snapshots.push(snapshot);
+      console.log(`  positions=${snapshot.positions.length} latest=${snapshot.latestOrders.length} orders=${snapshot.ordersStored}`);
 
-    if (!CONFIG.dryRun) {
-      const text = await postIngest({
-        source: "github-actions",
-        snapshots: [snapshot]
-      });
-      uploadResults.push(parseMaybeJson(text));
-      console.log(`  uploaded=${trader.label}`);
+      if (!CONFIG.dryRun) {
+        const text = await postIngest({
+          source: "github-actions",
+          snapshots: [snapshot]
+        });
+        uploadResults.push(parseMaybeJson(text));
+        console.log(`  uploaded=${trader.label}`);
+      }
+    } catch (error) {
+      if (!isClosedPortfolioError(error)) throw error;
+      const skippedItem = {
+        portfolioId: trader.portfolioId,
+        label: trader.label,
+        reason: error.message,
+        code: error.binanceCode || error.payload?.code || null
+      };
+      skipped.push(skippedItem);
+      console.warn(`  skipped=${trader.label}: ${skippedItem.reason}`);
     }
   }
 
@@ -69,7 +83,8 @@ async function main() {
         positions: snapshot.positions.length,
         latestOrders: snapshot.latestOrders.length,
         marginBalance: snapshot.marginBalance
-      }))
+      })),
+      skipped
     }, null, 2));
     return;
   }
@@ -77,7 +92,8 @@ async function main() {
   console.log(JSON.stringify({
     ok: true,
     source: "github-actions",
-    uploads: uploadResults
+    uploads: uploadResults,
+    skipped
   }, null, 2));
 }
 
@@ -390,8 +406,14 @@ function validateBinancePayload(status, ok, parsed) {
   if (parsed && parsed.success === false) {
     const error = new Error(parsed.message || parsed.code || "Binance API returned success=false");
     error.payload = parsed;
+    error.binanceCode = parsed.code ? String(parsed.code) : "";
     throw error;
   }
+}
+
+function isClosedPortfolioError(error) {
+  const code = String(error?.binanceCode || error?.payload?.code || "");
+  return CLOSED_PORTFOLIO_CODES.has(code);
 }
 
 function isRetryableBinanceError(error) {
