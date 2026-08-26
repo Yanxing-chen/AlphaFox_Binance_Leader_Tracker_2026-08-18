@@ -17,10 +17,13 @@ const CONFIG = {
   backfillPages: Number(process.env.BACKFILL_PAGES || 6),
   ingestUrl: process.env.LEADER_TRACKER_INGEST_URL || "",
   ingestSecret: process.env.LEADER_TRACKER_INGEST_SECRET || "",
+  ingestAuthMode: process.env.LEADER_TRACKER_AUTH_MODE || "",
+  oidcAudience: process.env.LEADER_TRACKER_OIDC_AUDIENCE || "leader-tracker-ingest",
   traderIds: (process.env.TRADER_IDS || "").split(",").map((item) => item.trim()).filter(Boolean),
   dryRun: process.argv.includes("--dry-run")
 };
 const CLOSED_PORTFOLIO_CODES = new Set(["11012028"]);
+let cachedIngestAuthToken = "";
 
 main().catch((error) => {
   console.error(error.stack || error.message);
@@ -29,8 +32,11 @@ main().catch((error) => {
 });
 
 async function main() {
-  if (!CONFIG.dryRun && (!CONFIG.ingestUrl || !CONFIG.ingestSecret)) {
-    throw new Error("Missing LEADER_TRACKER_INGEST_URL or LEADER_TRACKER_INGEST_SECRET");
+  if (!CONFIG.dryRun && !CONFIG.ingestUrl) {
+    throw new Error("Missing LEADER_TRACKER_INGEST_URL");
+  }
+  if (!CONFIG.dryRun && !CONFIG.ingestSecret && !canUseGitHubOidc()) {
+    throw new Error("Missing LEADER_TRACKER_INGEST_SECRET or GitHub OIDC environment");
   }
 
   const selectedTraders = CONFIG.traderIds.length
@@ -107,12 +113,13 @@ function parseMaybeJson(text) {
 
 async function postIngest(payload) {
   const body = JSON.stringify(payload);
+  const authToken = await getIngestAuthToken();
   try {
     const response = await fetch(CONFIG.ingestUrl, {
       method: "POST",
       headers: {
         "content-type": "application/json",
-        authorization: `Bearer ${CONFIG.ingestSecret}`
+        authorization: `Bearer ${authToken}`
       },
       body
     });
@@ -121,11 +128,48 @@ async function postIngest(payload) {
     return text;
   } catch (error) {
     if (process.platform !== "win32") throw error;
-    return postIngestViaPowerShell(body);
+    return postIngestViaPowerShell(body, authToken);
   }
 }
 
-function postIngestViaPowerShell(body) {
+async function getIngestAuthToken() {
+  if (cachedIngestAuthToken) return cachedIngestAuthToken;
+  if (shouldUseGitHubOidc()) {
+    cachedIngestAuthToken = await requestGitHubOidcToken();
+    return cachedIngestAuthToken;
+  }
+  cachedIngestAuthToken = CONFIG.ingestSecret;
+  return cachedIngestAuthToken;
+}
+
+function shouldUseGitHubOidc() {
+  return CONFIG.ingestAuthMode === "github-oidc" || (!CONFIG.ingestSecret && canUseGitHubOidc());
+}
+
+function canUseGitHubOidc() {
+  return Boolean(process.env.ACTIONS_ID_TOKEN_REQUEST_URL && process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN);
+}
+
+async function requestGitHubOidcToken() {
+  if (!canUseGitHubOidc()) {
+    throw new Error("GitHub OIDC is not available. Add `id-token: write` permission to the workflow.");
+  }
+  const url = new URL(process.env.ACTIONS_ID_TOKEN_REQUEST_URL);
+  url.searchParams.set("audience", CONFIG.oidcAudience);
+  const response = await fetch(url, {
+    headers: {
+      accept: "application/json; api-version=2.0",
+      authorization: `Bearer ${process.env.ACTIONS_ID_TOKEN_REQUEST_TOKEN}`
+    }
+  });
+  const text = await response.text();
+  if (!response.ok) throw new Error(`Unable to request GitHub OIDC token: HTTP ${response.status} ${text}`);
+  const parsed = JSON.parse(text);
+  if (!parsed.value) throw new Error("GitHub OIDC token response did not include a value");
+  return parsed.value;
+}
+
+function postIngestViaPowerShell(body, authToken) {
   const script = `
 $ProgressPreference = 'SilentlyContinue'
 [Console]::OutputEncoding = [System.Text.UTF8Encoding]::new()
@@ -147,7 +191,7 @@ function Read-ResponseText($response) {
   return [string]$response.Content
 }
 try {
-  $headers = @{ authorization = "Bearer $env:INGEST_SECRET" }
+  $headers = @{ authorization = "Bearer $env:INGEST_AUTH_TOKEN" }
   $bodyBytes = [System.Text.Encoding]::UTF8.GetBytes($env:INGEST_BODY)
   $response = Invoke-WebRequest -Uri $env:INGEST_URL -Method Post -ContentType 'application/json; charset=utf-8' -Headers $headers -Body $bodyBytes -UseBasicParsing -TimeoutSec 60
   Read-ResponseText $response
@@ -168,7 +212,7 @@ try {
       env: {
         ...process.env,
         INGEST_URL: CONFIG.ingestUrl,
-        INGEST_SECRET: CONFIG.ingestSecret,
+        INGEST_AUTH_TOKEN: authToken,
         INGEST_BODY: body
       }
     }, (error, stdout, stderr) => {

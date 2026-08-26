@@ -16,8 +16,11 @@ const CONFIG = {
   githubRepo: "AlphaFox_Binance_Leader_Tracker_2026-08-18",
   githubWorkflow: "poll-binance-leaders.yml",
   githubRef: "main",
+  githubOidcIssuer: "https://token.actions.githubusercontent.com",
+  githubOidcAudience: "leader-tracker-ingest",
   pageSize: 100,
-  backfillPages: 6
+  backfillPages: 6,
+  maxSnapshotsPerTrader: 300
 };
 
 let schemaReady = false;
@@ -97,7 +100,8 @@ async function handleApi(request, env) {
 
     if (url.pathname === "/api/ingest") {
       if (request.method !== "POST") return json({ error: "Method not allowed" }, 405);
-      return json(await handleIngest(request, env));
+      const result = await handleIngest(request, env);
+      return json(result, result.ok === false && result.error === "Unauthorized" ? 401 : 200);
     }
 
     return json({ error: "Not found" }, 404);
@@ -145,27 +149,116 @@ async function dispatchGitHubWorkflow(env, meta = {}) {
 }
 
 async function handleIngest(request, env) {
-  if (!env.INGEST_SECRET) {
-    throw new Error("INGEST_SECRET is not configured. Run: npx.cmd wrangler secret put INGEST_SECRET");
-  }
-  const expected = `Bearer ${env.INGEST_SECRET}`;
-  if (request.headers.get("authorization") !== expected) {
-    return { ok: false, error: "Unauthorized" };
-  }
+  const auth = await authorizeIngest(request, env);
+  if (!auth.ok) return { ok: false, error: "Unauthorized", reason: auth.reason || null };
 
   const body = await request.json();
   const snapshots = Array.isArray(body.snapshots)
     ? body.snapshots
     : [body.snapshot || body].filter(Boolean);
+  const source = body.source || auth.source || "ingest";
   const results = [];
   for (const snapshot of snapshots) {
-    results.push(await storeIngestedSnapshot(env, snapshot, body.source || "ingest"));
+    results.push(await storeIngestedSnapshot(env, snapshot, source));
   }
   return {
     ok: results.every((item) => item.ok),
-    source: body.source || "ingest",
+    source,
+    auth: auth.source,
     results
   };
+}
+
+async function authorizeIngest(request, env) {
+  const authorization = request.headers.get("authorization") || "";
+  const staticExpected = env.INGEST_SECRET ? `Bearer ${env.INGEST_SECRET}` : "";
+  if (staticExpected && authorization === staticExpected) {
+    return { ok: true, source: "static-secret" };
+  }
+
+  const token = authorization.replace(/^Bearer\s+/i, "").trim();
+  if (!token.includes(".")) {
+    return { ok: false, reason: "No valid bearer token" };
+  }
+
+  return verifyGitHubOidcToken(token, env);
+}
+
+async function verifyGitHubOidcToken(token, env) {
+  try {
+    const [encodedHeader, encodedPayload, encodedSignature] = token.split(".");
+    if (!encodedHeader || !encodedPayload || !encodedSignature) {
+      return { ok: false, reason: "Malformed OIDC token" };
+    }
+
+    const header = JSON.parse(textFromBase64Url(encodedHeader));
+    const payload = JSON.parse(textFromBase64Url(encodedPayload));
+    if (header.alg !== "RS256" || !header.kid) {
+      return { ok: false, reason: "Unsupported OIDC token header" };
+    }
+
+    const now = Math.floor(Date.now() / 1000);
+    const issuer = env.GITHUB_OIDC_ISSUER || CONFIG.githubOidcIssuer;
+    const audience = env.GITHUB_OIDC_AUDIENCE || CONFIG.githubOidcAudience;
+    const owner = env.GITHUB_OWNER || CONFIG.githubOwner;
+    const repo = env.GITHUB_REPO || CONFIG.githubRepo;
+    const workflow = env.GITHUB_WORKFLOW || CONFIG.githubWorkflow;
+    const ref = env.GITHUB_REF || CONFIG.githubRef;
+    const repository = `${owner}/${repo}`;
+    const workflowRef = `${repository}/.github/workflows/${workflow}@refs/heads/${ref}`;
+
+    if (payload.iss !== issuer) return { ok: false, reason: "OIDC issuer mismatch" };
+    if (payload.aud !== audience) return { ok: false, reason: "OIDC audience mismatch" };
+    if (payload.repository !== repository) return { ok: false, reason: "OIDC repository mismatch" };
+    if (payload.workflow_ref !== workflowRef) return { ok: false, reason: "OIDC workflow mismatch" };
+    if (payload.exp && now > Number(payload.exp) + 60) return { ok: false, reason: "OIDC token expired" };
+    if (payload.nbf && now + 60 < Number(payload.nbf)) return { ok: false, reason: "OIDC token not active" };
+
+    const jwks = await fetchGitHubOidcJwks(issuer);
+    const jwk = (jwks.keys || []).find((key) => key.kid === header.kid);
+    if (!jwk) return { ok: false, reason: "OIDC signing key not found" };
+
+    const key = await crypto.subtle.importKey(
+      "jwk",
+      jwk,
+      { name: "RSASSA-PKCS1-v1_5", hash: "SHA-256" },
+      false,
+      ["verify"]
+    );
+    const verified = await crypto.subtle.verify(
+      "RSASSA-PKCS1-v1_5",
+      key,
+      bytesFromBase64Url(encodedSignature),
+      new TextEncoder().encode(`${encodedHeader}.${encodedPayload}`)
+    );
+    return verified ? { ok: true, source: "github-oidc" } : { ok: false, reason: "OIDC signature mismatch" };
+  } catch (error) {
+    return { ok: false, reason: error.message };
+  }
+}
+
+async function fetchGitHubOidcJwks(issuer) {
+  const response = await fetch(`${issuer}/.well-known/jwks`, {
+    headers: { accept: "application/json" }
+  });
+  if (!response.ok) throw new Error(`Unable to fetch GitHub OIDC keys: HTTP ${response.status}`);
+  return response.json();
+}
+
+function textFromBase64Url(value) {
+  const bytes = bytesFromBase64Url(value);
+  return new TextDecoder().decode(bytes);
+}
+
+function bytesFromBase64Url(value) {
+  const normalized = value.replace(/-/g, "+").replace(/_/g, "/");
+  const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+  const binary = atob(padded);
+  const bytes = new Uint8Array(binary.length);
+  for (let index = 0; index < binary.length; index += 1) {
+    bytes[index] = binary.charCodeAt(index);
+  }
+  return bytes;
 }
 
 async function storeIngestedSnapshot(env, snapshot, source) {
@@ -212,6 +305,7 @@ async function storeIngestedSnapshot(env, snapshot, source) {
       dataHash,
       JSON.stringify(normalized)
     ).run();
+    await pruneSnapshots(env, trader.portfolioId);
   }
 
   await upsertPollRun(env, trader.portfolioId, {
@@ -294,6 +388,7 @@ async function pollOnce(env, trader, meta = {}) {
       dataHash,
       JSON.stringify(snapshot)
     ).run();
+    await pruneSnapshots(env, trader.portfolioId);
     snapshotWritten = true;
   }
 
@@ -309,6 +404,20 @@ async function pollOnce(env, trader, meta = {}) {
   });
 
   return { ...snapshot, snapshotWritten };
+}
+
+async function pruneSnapshots(env, portfolioId) {
+  const keep = Math.max(20, Number(env.MAX_SNAPSHOTS_PER_TRADER || CONFIG.maxSnapshotsPerTrader));
+  await env.DB.prepare(`
+    DELETE FROM snapshots
+    WHERE portfolio_id = ?
+      AND id NOT IN (
+        SELECT id FROM snapshots
+        WHERE portfolio_id = ?
+        ORDER BY id DESC
+        LIMIT ?
+      )
+  `).bind(portfolioId, portfolioId, keep).run();
 }
 
 function getTrader(portfolioId) {

@@ -9,6 +9,7 @@ on:
 
 permissions:
   contents: read
+  id-token: write
 
 jobs:
   poll:
@@ -41,7 +42,8 @@ jobs:
         run: node cloudflare/scripts/fetch_and_ingest.js
         env:
           LEADER_TRACKER_INGEST_URL: ${{ secrets.LEADER_TRACKER_INGEST_URL }}
-          LEADER_TRACKER_INGEST_SECRET: ${{ secrets.LEADER_TRACKER_INGEST_SECRET }}
+          LEADER_TRACKER_AUTH_MODE: github-oidc
+          LEADER_TRACKER_OIDC_AUDIENCE: leader-tracker-ingest
           TRADER_IDS: ${{ matrix.trader.id }}
           PAGE_SIZE: "100"
           BACKFILL_PAGES: "6"
