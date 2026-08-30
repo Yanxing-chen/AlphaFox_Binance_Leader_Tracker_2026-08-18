@@ -4,8 +4,6 @@ const TRADERS = [
   { portfolioId: "5075281354358777856", label: "熬鹰资本" },
   { portfolioId: "5108371059752839168", label: "鎏渊" },
   { portfolioId: "5121666018948220416", label: "趋势交易王" },
-  { portfolioId: "5142214769055593984", label: "Rainbow88" },
-  { portfolioId: "5098677138323805440", label: "geddong" },
   { portfolioId: "5175036213074191105", label: "如何设置低于10万U不能跟我的单" },
   { portfolioId: "4788776444236355328", label: "星辰社区-意钦" }
 ];
