@@ -365,12 +365,15 @@ async function pollAll(env, meta = {}) {
 
 async function pollOnce(env, trader, meta = {}) {
   await ensureSchema(env);
-  const detail = await fetchLeaderDetail(env, trader);
+  const [detail, officialPositionHistory] = await Promise.all([
+    fetchLeaderDetail(env, trader),
+    fetchPositionHistory(env, trader).catch(() => [])
+  ]);
   const existing = await readOrders(env, trader.portfolioId);
   const merged = await mergeFreshOrders(env, trader, existing);
   const insertedOrders = await insertOrders(env, trader.portfolioId, merged.additions);
   const orders = insertedOrders > 0 ? await readOrders(env, trader.portfolioId) : [...existing, ...merged.additions];
-  const snapshot = await buildSnapshot(env, trader, detail, orders, merged.additions);
+  const snapshot = await buildSnapshot(env, trader, detail, orders, merged.additions, officialPositionHistory);
   const dataHash = await snapshotHash(snapshot);
   const latestRow = await env.DB.prepare(
     "SELECT data_hash FROM snapshots WHERE portfolio_id = ? ORDER BY id DESC LIMIT 1"
@@ -556,6 +559,20 @@ async function fetchOrderHistoryPage(env, trader, pageNumber) {
   return payload.data || { total: 0, list: [] };
 }
 
+async function fetchPositionHistory(env, trader) {
+  const base = env.BINANCE_WEB_BASE_URL || CONFIG.binanceWebBaseUrl;
+  const payload = await fetchJson(`${base}/bapi/futures/v1/friendly/future/copy-trade/lead-portfolio/position-history`, {
+    method: "POST",
+    body: JSON.stringify({
+      portfolioId: trader.portfolioId,
+      pageNumber: 1,
+      pageSize: 100,
+      sort: "OPENING"
+    })
+  });
+  return payload?.data?.list || [];
+}
+
 async function fetchMarkPrice(env, symbol) {
   const encoded = encodeURIComponent(symbol);
   const bases = unique([
@@ -704,7 +721,7 @@ async function insertOrders(env, portfolioId, orders) {
   return inserted;
 }
 
-async function buildSnapshot(env, trader, detail, orders, additions) {
+async function buildSnapshot(env, trader, detail, orders, additions, officialPositionHistory = []) {
   const sorted = [...orders].sort((a, b) => orderTimestamp(a) - orderTimestamp(b));
   const rawPositions = buildRecentOpenPositionSeeds(sorted);
   const positions = [];
@@ -736,7 +753,7 @@ async function buildSnapshot(env, trader, detail, orders, additions) {
   const totalNotional = positions.reduce((sum, position) => sum + position.notional, 0);
   const totalUnrealizedPnl = positions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
   const effectiveLeverage = marginBalance > 0 ? totalNotional / marginBalance : 0;
-  const closedPositionHistory = buildClosedPositionHistory(sorted);
+  const closedPositionHistory = enrichClosedPositionHistory(buildClosedPositionHistory(sorted), officialPositionHistory);
   const performance = buildPerformance(detail, sorted, closedPositionHistory, marginBalance);
   const balanceCurve = [
     ...(await readBalanceCurve(env, trader.portfolioId)),
@@ -756,6 +773,7 @@ async function buildSnapshot(env, trader, detail, orders, additions) {
     currentCopyCount: toNumber(detail?.currentCopyCount),
     maxCopyCount: toNumber(detail?.maxCopyCount),
     lastTradeTime: toNumber(detail?.lastTradeTime),
+    latestPublicOrderTime: sorted.length ? orderTimestamp(sorted[sorted.length - 1]) : 0,
     ordersStored: sorted.length,
     ordersAdded: additions.length,
     latestOrders: [...sorted].sort((a, b) => orderTimestamp(b) - orderTimestamp(a)).slice(0, 30),
@@ -986,6 +1004,66 @@ function buildClosedPositionHistory(sorted) {
   return history.sort((a, b) => b.closeTime - a.closeTime);
 }
 
+function normalizeOfficialPosition(item) {
+  const side = String(item.side || "").toUpperCase();
+  return {
+    positionId: String(item.positionId || item.id || ""),
+    symbol: String(item.symbol || "").toUpperCase(),
+    side: side === "LONG" ? "LONG" : side === "SHORT" ? "SHORT" : side,
+    opened: toNumber(item.opened),
+    closed: toNumber(item.closed),
+    updateTime: toNumber(item.updateTime),
+    avgCost: toNumber(item.avgCost),
+    avgClosePrice: toNumber(item.avgClosePrice),
+    closingPnl: toNumber(item.closingPnl),
+    maxOpenInterest: toNumber(item.maxOpenInterest),
+    closedVolume: toNumber(item.closedVolume),
+    status: String(item.status || ""),
+    leverage: toNumber(item.leverage),
+    roi: toNumber(item.roi) * 100,
+    marginMode: String(item.isolated || "")
+  };
+}
+
+function enrichClosedPositionHistory(history, officialRows) {
+  const official = (officialRows || []).map(normalizeOfficialPosition);
+  if (!official.length) return history.map((item) => ({ ...item, dataSource: "order_history" }));
+  return official
+    .filter((position) => position.closedVolume > 0)
+    .map((position) => {
+      const fullyClosed = /all\s*closed/i.test(position.status);
+      return {
+        symbol: position.symbol,
+        baseAsset: position.symbol.replace(/USDT$/, ""),
+        side: position.side,
+        positionGroupId: position.positionId,
+        positionGroupLabel: "Binance 仓位历史",
+        closeSequence: 1,
+        status: fullyClosed ? "最终平仓" : "部分平仓",
+        groupStatus: fullyClosed ? "已全部平仓" : "仍有剩余",
+        realizedPnl: position.closingPnl,
+        openPrice: position.avgCost,
+        closeAvgPrice: position.avgClosePrice,
+        closedQty: position.closedVolume,
+        remainingQty: Math.max(0, position.maxOpenInterest - position.closedVolume),
+        finalRemainingQty: Math.max(0, position.maxOpenInterest - position.closedVolume),
+        totalClosedQty: position.closedVolume,
+        totalRealizedPnl: position.closingPnl,
+        groupCloseCount: 1,
+        maxQty: position.maxOpenInterest,
+        openTime: position.opened,
+        closeTime: position.closed || position.updateTime,
+        orderCount: 0,
+        hasOpenBasis: true,
+        officialRoi: position.roi,
+        officialLeverage: position.leverage,
+        marginMode: position.marginMode,
+        dataSource: "binance_position_history"
+      };
+    })
+    .sort((a, b) => b.closeTime - a.closeTime);
+}
+
 function newLeg(symbol, baseAsset, positionSide) {
   return {
     symbol,
@@ -1108,7 +1186,12 @@ async function snapshotHash(snapshot) {
       closedQty: round(item.closedQty, 8),
       remainingQty: round(item.remainingQty, 8),
       finalRemainingQty: round(item.finalRemainingQty, 8),
-      realizedPnl: round(item.realizedPnl, 8)
+      realizedPnl: round(item.realizedPnl, 8),
+      openPrice: round(item.openPrice, 8),
+      openTime: item.openTime,
+      dataSource: item.dataSource,
+      officialRoi: round(item.officialRoi, 8),
+      officialLeverage: round(item.officialLeverage, 8)
     })),
     positions: snapshot.positions.map((position) => ({
       symbol: position.symbol,

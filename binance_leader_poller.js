@@ -31,6 +31,7 @@ const config = {
   pageSize: Math.min(Number(process.env.LEADER_PAGE_SIZE || 100), 100),
   backfillPages: Number(process.env.LEADER_BACKFILL_PAGES || 30),
   fetchMarkPrices: process.env.LEADER_FETCH_MARK_PRICES !== "0",
+  officialRoiTimeRange: process.env.LEADER_ROI_TIME_RANGE || "90D",
   binanceWebBaseUrl: (process.env.BINANCE_WEB_BASE_URL || "https://www.binance.com").replace(/\/$/, ""),
   binanceFapiBaseUrl: (process.env.BINANCE_FAPI_BASE_URL || "https://fapi.binance.com").replace(/\/$/, "")
 };
@@ -43,6 +44,18 @@ const traders = [
   {
     portfolioId: "5108371059752839168",
     label: "鎏渊"
+  },
+  {
+    portfolioId: "5121666018948220416",
+    label: "趋势交易王"
+  },
+  {
+    portfolioId: "5175036213074191105",
+    label: "如何设置低于10万U不能跟我的单"
+  },
+  {
+    portfolioId: "4788776444236355328",
+    label: "星辰社区-意钦"
   }
 ];
 
@@ -255,6 +268,39 @@ async function fetchLeaderDetail(trader = getTrader()) {
   }
 }
 
+async function fetchOfficialRoi(trader = getTrader()) {
+  const url = `${config.binanceWebBaseUrl}/bapi/futures/v1/friendly/future/copy-trade/home-page/query-list`;
+  const payload = await fetchJson(url, {
+    method: "POST",
+    body: JSON.stringify({
+      pageNumber: 1,
+      pageSize: 20,
+      timeRange: config.officialRoiTimeRange,
+      dataType: "ROI",
+      favoriteOnly: false,
+      hideFull: false,
+      nickname: trader.label,
+      order: "DESC",
+      userAsset: 0,
+      portfolioType: "ALL"
+    })
+  });
+  const list = payload?.data?.list || [];
+  const match = list.find((item) => String(item.leadPortfolioId) === trader.portfolioId);
+  if (!match) throw new Error(`Official ROI data unavailable for ${trader.portfolioId}`);
+  const curve = (match.chartItems || [])
+    .filter((item) => String(item.dataType || "ROI").toUpperCase() === "ROI")
+    .map((item) => ({ time: toNumber(item.dateTime), roi: toNumber(item.value) }))
+    .filter((item) => item.time > 0)
+    .sort((a, b) => a.time - b.time);
+  if (curve.length < 2) throw new Error(`Official ROI curve unavailable for ${trader.portfolioId}`);
+  return {
+    roi: toNumber(match.roi),
+    timeRange: config.officialRoiTimeRange,
+    curve
+  };
+}
+
 async function fetchOrderHistoryPage(trader = getTrader(), pageNumber) {
   const url = `${config.binanceWebBaseUrl}/bapi/futures/v1/friendly/future/copy-trade/lead-portfolio/order-history`;
   const payload = await fetchJson(url, {
@@ -266,6 +312,20 @@ async function fetchOrderHistoryPage(trader = getTrader(), pageNumber) {
     })
   });
   return payload.data || { total: 0, list: [] };
+}
+
+async function fetchPositionHistory(trader = getTrader()) {
+  const url = `${config.binanceWebBaseUrl}/bapi/futures/v1/friendly/future/copy-trade/lead-portfolio/position-history`;
+  const payload = await fetchJson(url, {
+    method: "POST",
+    body: JSON.stringify({
+      portfolioId: trader.portfolioId,
+      pageNumber: 1,
+      pageSize: 100,
+      sort: "OPENING"
+    })
+  });
+  return payload?.data?.list || [];
 }
 
 async function fetchMarkPrice(symbol) {
@@ -444,6 +504,66 @@ function buildClosedPositionHistory(sorted) {
   return history.sort((a, b) => b.closeTime - a.closeTime);
 }
 
+function normalizeOfficialPosition(item) {
+  const side = String(item.side || "").toUpperCase();
+  return {
+    positionId: String(item.positionId || item.id || ""),
+    symbol: String(item.symbol || "").toUpperCase(),
+    side: side === "LONG" ? "LONG" : side === "SHORT" ? "SHORT" : side,
+    opened: toNumber(item.opened),
+    closed: toNumber(item.closed),
+    updateTime: toNumber(item.updateTime),
+    avgCost: toNumber(item.avgCost),
+    avgClosePrice: toNumber(item.avgClosePrice),
+    closingPnl: toNumber(item.closingPnl),
+    maxOpenInterest: toNumber(item.maxOpenInterest),
+    closedVolume: toNumber(item.closedVolume),
+    status: String(item.status || ""),
+    leverage: toNumber(item.leverage),
+    roi: toNumber(item.roi) * 100,
+    marginMode: String(item.isolated || "")
+  };
+}
+
+function enrichClosedPositionHistory(history, officialRows) {
+  const official = (officialRows || []).map(normalizeOfficialPosition);
+  if (!official.length) return history.map((item) => ({ ...item, dataSource: "order_history" }));
+  return official
+    .filter((position) => position.closedVolume > 0)
+    .map((position) => {
+      const fullyClosed = /all\s*closed/i.test(position.status);
+      return {
+        symbol: position.symbol,
+        baseAsset: position.symbol.replace(/USDT$/, ""),
+        side: position.side,
+        positionGroupId: position.positionId,
+        positionGroupLabel: "Binance 仓位历史",
+        closeSequence: 1,
+        status: fullyClosed ? "最终平仓" : "部分平仓",
+        groupStatus: fullyClosed ? "已全部平仓" : "仍有剩余",
+        realizedPnl: position.closingPnl,
+        openPrice: position.avgCost,
+        closeAvgPrice: position.avgClosePrice,
+        closedQty: position.closedVolume,
+        remainingQty: Math.max(0, position.maxOpenInterest - position.closedVolume),
+        finalRemainingQty: Math.max(0, position.maxOpenInterest - position.closedVolume),
+        totalClosedQty: position.closedVolume,
+        totalRealizedPnl: position.closingPnl,
+        groupCloseCount: 1,
+        maxQty: position.maxOpenInterest,
+        openTime: position.opened,
+        closeTime: position.closed || position.updateTime,
+        orderCount: 0,
+        hasOpenBasis: true,
+        officialRoi: position.roi,
+        officialLeverage: position.leverage,
+        marginMode: position.marginMode,
+        dataSource: "binance_position_history"
+      };
+    })
+    .sort((a, b) => b.closeTime - a.closeTime);
+}
+
 function buildAssetPreference(orders) {
   const byAsset = new Map();
   for (const order of orders) {
@@ -571,7 +691,7 @@ function readBalanceCurve(trader = getTrader()) {
   return points;
 }
 
-async function buildSnapshot(trader, detail, orders, additions) {
+async function buildSnapshot(trader, detail, orders, additions, officialRoi = null, officialPositionHistory = []) {
   const sorted = [...orders].sort((a, b) => toNumber(a.orderUpdateTime || a.time) - toNumber(b.orderUpdateTime || b.time));
   const rawPositions = buildRecentOpenPositionSeeds(sorted);
   const positions = [];
@@ -604,8 +724,19 @@ async function buildSnapshot(trader, detail, orders, additions) {
   const totalNotional = positions.reduce((sum, position) => sum + position.notional, 0);
   const totalUnrealizedPnl = positions.reduce((sum, position) => sum + position.unrealizedPnl, 0);
   const effectiveLeverage = marginBalance > 0 ? totalNotional / marginBalance : 0;
-  const closedPositionHistory = buildClosedPositionHistory(sorted);
-  const performance = sorted.length ? buildPerformance(detail, sorted, closedPositionHistory, marginBalance) : (trader.fallbackPerformance || buildPerformance(detail, sorted, closedPositionHistory, marginBalance));
+  const closedPositionHistory = enrichClosedPositionHistory(buildClosedPositionHistory(sorted), officialPositionHistory);
+  const reconstructedPerformance = sorted.length ? buildPerformance(detail, sorted, closedPositionHistory, marginBalance) : (trader.fallbackPerformance || buildPerformance(detail, sorted, closedPositionHistory, marginBalance));
+  const performance = officialRoi?.curve?.length ? {
+    ...reconstructedPerformance,
+    roi: officialRoi.roi,
+    curve: officialRoi.curve,
+    curveSource: "binance_official",
+    curveTimeRange: officialRoi.timeRange
+  } : {
+    ...reconstructedPerformance,
+    curveSource: "reconstructed",
+    curveTimeRange: null
+  };
   const assetPreference = buildAssetPreference(sorted);
   const balanceCurve = [
     ...readBalanceCurve(trader),
@@ -625,6 +756,7 @@ async function buildSnapshot(trader, detail, orders, additions) {
     currentCopyCount: toNumber(detail?.currentCopyCount),
     maxCopyCount: toNumber(detail?.maxCopyCount),
     lastTradeTime: toNumber(detail?.lastTradeTime),
+    latestPublicOrderTime: sorted.length ? orderTimestamp(sorted[sorted.length - 1]) : 0,
     ordersStored: orders.length,
     ordersAdded: additions.length,
     latestOrders: [...orders]
@@ -647,11 +779,15 @@ async function pollOnce(portfolioId = config.portfolioId) {
   state.pollingByTrader.set(trader.portfolioId, true);
   state.lastErrorByTrader.set(trader.portfolioId, null);
   try {
-    const detail = await fetchLeaderDetail(trader);
+    const [detail, officialRoi, officialPositionHistory] = await Promise.all([
+      fetchLeaderDetail(trader),
+      fetchOfficialRoi(trader).catch(() => null),
+      fetchPositionHistory(trader).catch(() => [])
+    ]);
     const existing = readOrders(trader);
     const merged = await mergeFreshOrders(trader, existing);
     writeOrders(trader, merged.orders);
-    const snapshot = await buildSnapshot(trader, detail, merged.orders, merged.additions);
+    const snapshot = await buildSnapshot(trader, detail, merged.orders, merged.additions, officialRoi, officialPositionHistory);
     const snapshotsPath = snapshotsPathFor(trader);
     fs.appendFileSync(snapshotsPath, `${JSON.stringify(snapshot)}\n`);
     state.lastSnapshotByTrader.set(trader.portfolioId, snapshot);
@@ -734,7 +870,11 @@ async function handleApi(req, res) {
             // A detail miss should not block viewing the local order ledger.
           }
           detail = detail || trader.fallbackDetail || null;
-          const rebuilt = await buildSnapshot(trader, detail, orders, []);
+          const [officialRoi, officialPositionHistory] = await Promise.all([
+            fetchOfficialRoi(trader).catch(() => null),
+            fetchPositionHistory(trader).catch(() => [])
+          ]);
+          const rebuilt = await buildSnapshot(trader, detail, orders, [], officialRoi, officialPositionHistory);
           if (!snapshot || detail) {
             state.lastSnapshotByTrader.set(trader.portfolioId, rebuilt);
             snapshot = rebuilt;
@@ -748,9 +888,17 @@ async function handleApi(req, res) {
       json(res, 200, await fetchLeaderDetail(trader));
       return;
     }
+    if (url.pathname === "/api/raw/official-roi") {
+      json(res, 200, await fetchOfficialRoi(trader));
+      return;
+    }
     if (url.pathname === "/api/raw/order-history") {
       const pageNumber = Number(url.searchParams.get("pageNumber") || 1);
       json(res, 200, await fetchOrderHistoryPage(trader, pageNumber));
+      return;
+    }
+    if (url.pathname === "/api/raw/position-history") {
+      json(res, 200, await fetchPositionHistory(trader));
       return;
     }
     json(res, 404, { error: "Unknown API route" });

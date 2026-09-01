@@ -50,9 +50,12 @@ async function main() {
   for (const trader of selectedTraders) {
     try {
       console.log(`Fetching ${trader.label} (${trader.portfolioId})`);
-      const detail = await fetchLeaderDetail(trader);
-      const orders = await fetchOrders(trader);
-      const snapshot = await buildSnapshot(trader, detail, orders);
+      const [detail, orders, officialPositionHistory] = await Promise.all([
+        fetchLeaderDetail(trader),
+        fetchOrders(trader),
+        fetchPositionHistory(trader).catch(() => [])
+      ]);
+      const snapshot = await buildSnapshot(trader, detail, orders, officialPositionHistory);
       snapshots.push(snapshot);
       console.log(`  positions=${snapshot.positions.length} latest=${snapshot.latestOrders.length} orders=${snapshot.ordersStored}`);
 
@@ -263,6 +266,19 @@ async function fetchOrderHistoryPage(trader, pageNumber) {
   return payload.data || { total: 0, list: [] };
 }
 
+async function fetchPositionHistory(trader) {
+  const payload = await fetchJson(`${CONFIG.binanceWebBaseUrl}/bapi/futures/v1/friendly/future/copy-trade/lead-portfolio/position-history`, {
+    method: "POST",
+    body: JSON.stringify({
+      portfolioId: trader.portfolioId,
+      pageNumber: 1,
+      pageSize: 100,
+      sort: "OPENING"
+    })
+  });
+  return payload?.data?.list || [];
+}
+
 async function fetchMarkPrice(symbol) {
   const encoded = encodeURIComponent(symbol);
   const bases = unique([
@@ -463,7 +479,7 @@ function isRetryableBinanceError(error) {
   return payload && (payload.code === "11012005" || /busy|later|timeout/i.test(String(payload.message || error.message)));
 }
 
-async function buildSnapshot(trader, detail, orders) {
+async function buildSnapshot(trader, detail, orders, officialPositionHistory = []) {
   const rawPositions = buildRecentOpenPositionSeeds(orders);
   const positions = [];
   for (const position of rawPositions) {
@@ -490,7 +506,7 @@ async function buildSnapshot(trader, detail, orders) {
   }
 
   const marginBalance = toNumber(detail?.marginBalance);
-  const closedPositionHistory = buildClosedPositionHistory(orders);
+  const closedPositionHistory = enrichClosedPositionHistory(buildClosedPositionHistory(orders), officialPositionHistory);
   return {
     portfolioId: trader.portfolioId,
     polledAt: new Date().toISOString(),
@@ -500,6 +516,7 @@ async function buildSnapshot(trader, detail, orders) {
     currentCopyCount: toNumber(detail?.currentCopyCount),
     maxCopyCount: toNumber(detail?.maxCopyCount),
     lastTradeTime: toNumber(detail?.lastTradeTime),
+    latestPublicOrderTime: orders.reduce((latest, order) => Math.max(latest, orderTimestamp(order)), 0),
     ordersStored: orders.length,
     ordersAdded: 0,
     latestOrders: [...orders].sort((a, b) => orderTimestamp(b) - orderTimestamp(a)).slice(0, 30),
@@ -690,6 +707,66 @@ function buildClosedPositionHistory(sorted) {
     }
   }
   return history.sort((a, b) => b.closeTime - a.closeTime);
+}
+
+function normalizeOfficialPosition(item) {
+  const side = String(item.side || "").toUpperCase();
+  return {
+    positionId: String(item.positionId || item.id || ""),
+    symbol: String(item.symbol || "").toUpperCase(),
+    side: side === "LONG" ? "LONG" : side === "SHORT" ? "SHORT" : side,
+    opened: toNumber(item.opened),
+    closed: toNumber(item.closed),
+    updateTime: toNumber(item.updateTime),
+    avgCost: toNumber(item.avgCost),
+    avgClosePrice: toNumber(item.avgClosePrice),
+    closingPnl: toNumber(item.closingPnl),
+    maxOpenInterest: toNumber(item.maxOpenInterest),
+    closedVolume: toNumber(item.closedVolume),
+    status: String(item.status || ""),
+    leverage: toNumber(item.leverage),
+    roi: toNumber(item.roi) * 100,
+    marginMode: String(item.isolated || "")
+  };
+}
+
+function enrichClosedPositionHistory(history, officialRows) {
+  const official = (officialRows || []).map(normalizeOfficialPosition);
+  if (!official.length) return history.map((item) => ({ ...item, dataSource: "order_history" }));
+  return official
+    .filter((position) => position.closedVolume > 0)
+    .map((position) => {
+      const fullyClosed = /all\s*closed/i.test(position.status);
+      return {
+        symbol: position.symbol,
+        baseAsset: position.symbol.replace(/USDT$/, ""),
+        side: position.side,
+        positionGroupId: position.positionId,
+        positionGroupLabel: "Binance 仓位历史",
+        closeSequence: 1,
+        status: fullyClosed ? "最终平仓" : "部分平仓",
+        groupStatus: fullyClosed ? "已全部平仓" : "仍有剩余",
+        realizedPnl: position.closingPnl,
+        openPrice: position.avgCost,
+        closeAvgPrice: position.avgClosePrice,
+        closedQty: position.closedVolume,
+        remainingQty: Math.max(0, position.maxOpenInterest - position.closedVolume),
+        finalRemainingQty: Math.max(0, position.maxOpenInterest - position.closedVolume),
+        totalClosedQty: position.closedVolume,
+        totalRealizedPnl: position.closingPnl,
+        groupCloseCount: 1,
+        maxQty: position.maxOpenInterest,
+        openTime: position.opened,
+        closeTime: position.closed || position.updateTime,
+        orderCount: 0,
+        hasOpenBasis: true,
+        officialRoi: position.roi,
+        officialLeverage: position.leverage,
+        marginMode: position.marginMode,
+        dataSource: "binance_position_history"
+      };
+    })
+    .sort((a, b) => b.closeTime - a.closeTime);
 }
 
 function newLeg(symbol, baseAsset, positionSide) {

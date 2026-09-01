@@ -6,142 +6,322 @@
   <title>Binance 带单员追踪台</title>
   <style>
     :root {
-      --bg: #f6f7f9;
-      --panel: #fff;
-      --ink: #141414;
-      --muted: #74777f;
-      --line: #e8ebef;
-      --soft: #f1f3f5;
-      --yellow: #f4c21b;
-      --green: #24b77a;
-      --red: #eb4d66;
-      --blue: #246fe5;
-      --cyan: #1fa8c9;
-      --radius: 8px;
-      font-family: Inter, ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
+      --bg: #f5f5f5;
+      --panel: #fdfdfd;
+      --panel-raised: #fff;
+      --ink: #181a20;
+      --muted: #707a8a;
+      --line: #e8eaed;
+      --line-strong: #d8dce1;
+      --soft: #f2f3f5;
+      --yellow: #fcd535;
+      --yellow-hover: #f0b90b;
+      --yellow-soft: #fff8d6;
+      --green: #0a9f6e;
+      --red: #d9304f;
+      --radius: 12px;
+      --control-radius: 8px;
+      font-family: ui-sans-serif, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", "Microsoft YaHei", sans-serif;
     }
     * { box-sizing: border-box; }
-    body { margin: 0; background: var(--bg); color: var(--ink); min-height: 115vh; overflow-y: auto; }
+    html { scroll-behavior: smooth; }
+    body { margin: 0; background: var(--bg); color: var(--ink); min-height: 100dvh; overflow-y: auto; }
     button { border: 0; background: transparent; color: inherit; font: inherit; cursor: pointer; }
-    .shell { width: min(100%, 1240px); margin: 0 auto; padding: 22px; display: grid; gap: 16px; }
-    .topbar { display: flex; align-items: center; justify-content: space-between; gap: 16px; position: relative; }
-    .left-head { position: relative; display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .menu-btn { width: 42px; height: 42px; border-radius: var(--radius); display: grid; place-items: center; background: var(--soft); font-size: 22px; font-weight: 800; }
-    .trader-menu { position: absolute; left: 0; top: 52px; width: 260px; padding: 8px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); box-shadow: 0 14px 36px rgba(0,0,0,.12); display: none; z-index: 20; }
-    .trader-menu.open { display: grid; gap: 6px; }
-    .trader-option { min-height: 42px; padding: 9px 10px; border-radius: 7px; text-align: left; display: grid; gap: 2px; }
-    .trader-option.active { background: #fff6cf; }
-    .trader-option strong { font-size: 14px; font-weight: 760; }
-    .trader-option span { color: var(--muted); font-size: 12px; }
-    .identity { display: flex; align-items: center; gap: 10px; min-width: 0; }
-    .avatar { width: 46px; height: 46px; border-radius: 50%; object-fit: cover; background: var(--soft); }
-    h1 { margin: 0; font-size: 24px; line-height: 1.15; font-weight: 780; letter-spacing: 0; }
-    h2 { margin: 0; font-size: 15px; line-height: 1.25; font-weight: 760; letter-spacing: 0; }
-    .sub { color: var(--muted); font-size: 13px; line-height: 1.4; }
+    button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    button:active { transform: translateY(1px); }
+    button:disabled { cursor: wait; opacity: .62; transform: none; }
+    .app-shell { width: min(100%, 1600px); min-height: 100dvh; margin: 0 auto; display: grid; grid-template-columns: 248px minmax(0, 1fr) 276px; background: var(--bg); }
+    .shell { width: 100%; min-width: 0; padding: 24px clamp(18px, 2.4vw, 36px) 42px; display: grid; align-content: start; gap: 16px; }
+    .trader-sidebar { position: sticky; top: 0; height: 100dvh; padding: 24px 14px 18px; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 18px; border-right: 1px solid var(--line); background: var(--panel-raised); z-index: 20; }
+    .sidebar-brand { padding: 0 10px; }
+    .sidebar-brand strong { font-size: 17px; line-height: 1.2; letter-spacing: -.02em; }
+    .sidebar-list-head { padding: 0 10px 8px; display: flex; align-items: center; justify-content: space-between; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 12px; font-weight: 680; }
+    .sidebar-list-head span:last-child { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 11px; }
+    .trader-list { min-height: 0; display: grid; align-content: start; gap: 2px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
+    .trader-option { position: relative; width: 100%; min-height: 68px; padding: 10px 10px 10px 13px; border-radius: var(--control-radius); text-align: left; display: grid; grid-template-columns: 38px minmax(0, 1fr); align-items: center; gap: 10px; transition: background-color .16s ease; }
+    .trader-option::before { content: ""; position: absolute; left: 0; top: 10px; bottom: 10px; width: 3px; border-radius: 2px; background: transparent; }
+    .trader-option:hover { background: var(--soft); }
+    .trader-option.active { background: var(--yellow-soft); }
+    .trader-option.active::before { background: var(--yellow-hover); }
+    .trader-avatar { width: 38px; height: 38px; border: 1px solid var(--line); border-radius: 50%; display: grid; place-items: center; object-fit: cover; background: var(--soft); color: var(--muted); font-size: 13px; font-weight: 760; }
+    .trader-copy { min-width: 0; display: grid; gap: 5px; }
+    .trader-option strong { overflow: hidden; font-size: 14px; line-height: 1.3; font-weight: 760; text-overflow: ellipsis; white-space: nowrap; }
+    .trader-option .trader-summary { color: #4e5662; font-size: 10px; line-height: 1.35; }
+    .sidebar-loading { padding: 12px 10px; color: var(--muted); font-size: 12px; }
+    .sidebar-backdrop { display: none; }
+    .message-sidebar { position: sticky; top: 0; height: 100dvh; min-width: 0; padding: 24px 18px; border-left: 1px solid var(--line); background: var(--panel-raised); align-self: start; }
+    .message-board { min-height: 100%; display: flex; flex-direction: column; }
+    .message-head { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+    .message-intro { margin: 10px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
+    .community-cta { min-height: 66px; padding: 12px 13px; border: 1px solid var(--yellow); border-radius: var(--control-radius); display: grid; align-content: center; gap: 4px; background: var(--yellow); color: var(--ink); text-decoration: none; transition: background-color .16s ease, border-color .16s ease, transform .16s ease; }
+    .community-cta:hover { background: var(--yellow-hover); border-color: var(--yellow-hover); }
+    .community-cta:active { transform: translateY(1px); }
+    .community-cta:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    .community-cta strong { font-size: 14px; line-height: 1.25; }
+    .community-cta span { font-size: 10px; line-height: 1.4; }
+    .notice-list { margin-top: 18px; border-block: 1px solid var(--line); }
+    .notice-item { padding: 15px 0; }
+    .notice-item + .notice-item { border-top: 1px solid var(--line); }
+    .notice-item strong { font-size: 12px; line-height: 1.3; }
+    .notice-item p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .topbar { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 20px; position: relative; }
+    .left-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
+    .menu-btn { width: 42px; height: 42px; border: 1px solid var(--line); border-radius: var(--control-radius); display: none; place-items: center; background: var(--panel-raised); font-size: 20px; line-height: 1; font-weight: 800; transition: background-color .16s ease, border-color .16s ease; }
+    .menu-btn:hover { background: var(--soft); border-color: var(--line-strong); }
+    .current-trader { min-width: 0; display: grid; grid-template-columns: 44px minmax(0, 1fr); align-items: center; gap: 12px; }
+    .current-avatar-frame { width: 44px; height: 44px; border: 1px solid var(--line); border-radius: 50%; display: grid; place-items: center; overflow: hidden; background: var(--soft); color: var(--muted); font-size: 14px; font-weight: 760; }
+    .current-avatar { width: 100%; height: 100%; object-fit: cover; }
+    .current-trader-copy { min-width: 0; }
+    .current-title-line { display: flex; align-items: center; flex-wrap: wrap; gap: 7px 10px; }
+    h1 { margin: 0; font-size: 22px; line-height: 1.12; font-weight: 760; letter-spacing: -.02em; }
+    h2 { margin: 0; font-size: 16px; line-height: 1.25; font-weight: 760; letter-spacing: -.01em; }
     .actions { display: flex; gap: 8px; align-items: center; }
-    .btn { min-height: 36px; padding: 8px 12px; border-radius: var(--radius); background: var(--soft); font-size: 14px; font-weight: 700; }
-    .btn.primary { background: var(--yellow); color: #171717; }
+    .btn { min-height: 38px; padding: 8px 13px; border: 1px solid var(--line); border-radius: var(--control-radius); display: inline-flex; align-items: center; justify-content: center; background: var(--panel-raised); color: inherit; font-size: 13px; font-weight: 700; text-decoration: none; white-space: nowrap; cursor: pointer; transition: background-color .16s ease, border-color .16s ease; }
+    .btn:hover { background: var(--soft); border-color: var(--line-strong); }
+    .btn:active { transform: translateY(1px); }
+    .btn:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
+    .btn.primary { background: var(--yellow); border-color: var(--yellow); color: var(--ink); }
+    .btn.primary:hover { background: var(--yellow-hover); border-color: var(--yellow-hover); }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
-    .leader { padding: 18px; display: grid; gap: 16px; }
+    .leader { padding: 0; }
     .tag-row { display: flex; flex-wrap: wrap; gap: 8px; }
-    .tag { min-height: 26px; display: inline-flex; align-items: center; padding: 5px 9px; border-radius: 6px; background: var(--soft); color: #565d67; font-size: 12px; font-weight: 650; }
-    .kpis { display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); border-radius: var(--radius); overflow: hidden; }
-    .kpi { background: #fbfbfc; padding: 14px; display: grid; gap: 7px; min-width: 0; }
-    .kpi .value { font-size: 19px; font-weight: 740; }
-    .label { color: var(--muted); font-size: 13px; line-height: 1.2; }
-    .value { font-size: 20px; line-height: 1.18; font-weight: 760; overflow-wrap: anywhere; letter-spacing: 0; }
-    .value.small { font-size: 16px; }
-    .unit { display: inline; margin-left: 5px; font-size: 13px; line-height: 1; font-weight: 650; vertical-align: baseline; }
+    .tag { min-height: 25px; display: inline-flex; align-items: center; padding: 5px 8px; border-radius: 6px; background: var(--soft); color: #535c69; font-size: 11px; font-weight: 680; }
+    .top-tags { gap: 6px; }
+    .top-tags .tag { min-height: 23px; padding: 4px 7px; }
+    .kpis { margin: 0; display: grid; grid-template-columns: repeat(4, minmax(0, 1fr)); gap: 1px; background: var(--line); overflow: hidden; }
+    .kpi { background: var(--panel); padding: 16px 20px 18px; display: grid; gap: 7px; min-width: 0; }
+    .kpi .value { font-size: clamp(18px, 1.5vw, 22px); font-weight: 730; }
+    .label { color: var(--muted); font-size: 12px; line-height: 1.25; }
+    .value { font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: clamp(17px, 1.5vw, 21px); line-height: 1.18; font-weight: 720; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; letter-spacing: -.04em; }
+    .value.small { font-size: 15px; letter-spacing: -.035em; }
+    .unit { display: inline; margin-left: 5px; font-family: inherit; font-size: 11px; line-height: 1; font-weight: 650; letter-spacing: 0; vertical-align: baseline; }
     .good { color: var(--green); }
     .bad { color: var(--red); }
-    .tabs { display: flex; gap: 6px; padding: 8px; background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; }
-    .tab { flex: 0 0 auto; min-height: 38px; padding: 9px 14px; border-radius: 7px; color: var(--muted); font-size: 15px; font-weight: 720; white-space: nowrap; }
+    .tabs { position: sticky; top: 12px; z-index: 10; display: flex; gap: 4px; padding: 6px; background: var(--panel-raised); border: 1px solid var(--line); border-radius: var(--radius); overflow-x: auto; scrollbar-width: none; box-shadow: 0 6px 20px rgba(24, 26, 32, .04); }
+    .tabs::-webkit-scrollbar { display: none; }
+    .tab { flex: 0 0 auto; min-height: 38px; padding: 9px 14px; border-radius: var(--control-radius); color: var(--muted); font-size: 14px; font-weight: 700; white-space: nowrap; transition: background-color .16s ease, color .16s ease; }
+    .tab:hover { background: var(--soft); color: var(--ink); }
     .tab.active { background: var(--yellow); color: var(--ink); }
     .content { display: grid; gap: 16px; }
-    .section-head { padding: 15px 16px; border-bottom: 1px solid var(--line); display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .section-body { padding: 16px; }
-    .grid-2 { display: grid; grid-template-columns: minmax(680px, 1.35fr) minmax(320px, .65fr); gap: 16px; }
-    .metrics { display: grid; grid-template-columns: repeat(3, minmax(220px, 1fr)); gap: 12px; }
-    .metric { border: 1px solid var(--line); border-radius: var(--radius); padding: 13px; display: grid; gap: 7px; min-width: 0; }
-    .chart-wrap { height: 270px; }
+    .section-head { min-height: 54px; padding: 14px 18px; border-bottom: 1px solid var(--line); display: grid; align-content: center; }
+    .section-body { padding: 18px; }
+    .grid-2 { display: grid; grid-template-columns: minmax(0, 2fr) minmax(290px, .8fr); gap: 16px; }
+    .metrics { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--line); overflow: hidden; }
+    .metric { padding: 15px; display: grid; align-content: center; gap: 7px; min-width: 0; background: var(--panel-raised); }
+    .chart-wrap { height: 300px; }
     .chart { width: 100%; height: 100%; display: block; }
-    .asset-list { display: grid; gap: 12px; }
-    .asset-row { display: grid; grid-template-columns: 72px 1fr 64px; align-items: center; gap: 10px; font-size: 13px; font-weight: 650; }
-    .bar { height: 9px; border-radius: 999px; background: var(--soft); overflow: hidden; }
-    .bar i { display: block; height: 100%; border-radius: 999px; background: var(--blue); }
-    .position-card { padding: 16px; display: grid; gap: 16px; }
-    .symbol-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 19px; font-weight: 760; letter-spacing: 0; }
+    .roi-chart { position: relative; width: 100%; height: 100%; padding: 18px 8px 32px 54px; }
+    .roi-plot { position: relative; width: 100%; height: 100%; cursor: crosshair; touch-action: pan-y; }
+    .roi-axis-title { position: absolute; left: 0; top: 0; color: var(--muted); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 9px; font-weight: 680; }
+    .roi-y-labels { position: absolute; left: 0; top: 18px; bottom: 32px; width: 46px; display: flex; flex-direction: column; justify-content: space-between; align-items: flex-end; color: var(--muted); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 9px; font-variant-numeric: tabular-nums; }
+    .roi-x-labels { position: absolute; left: 54px; right: 8px; bottom: 5px; height: 18px; color: var(--muted); font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 9px; font-variant-numeric: tabular-nums; }
+    .roi-x-tick { position: absolute; left: var(--x); white-space: nowrap; transform: translateX(-50%); }
+    .roi-x-tick:first-child { transform: none; }
+    .roi-x-tick:last-child { transform: translateX(-100%); }
+    .roi-hover-line, .roi-hover-dot, .roi-tooltip { position: absolute; z-index: 2; pointer-events: none; opacity: 0; transition: opacity .1s ease; }
+    .roi-plot.hovering .roi-hover-line, .roi-plot.hovering .roi-hover-dot, .roi-plot.hovering .roi-tooltip { opacity: 1; }
+    .roi-hover-line { top: 0; bottom: 0; width: 1px; background: #929aa5; transform: translateX(-.5px); }
+    .roi-hover-dot { width: 9px; height: 9px; border: 2px solid var(--panel-raised); border-radius: 50%; background: var(--roi-stroke); box-shadow: 0 0 0 1px var(--roi-stroke); transform: translate(-50%, -50%); }
+    .roi-tooltip { min-width: 132px; padding: 9px 10px; border: 1px solid #30333a; border-radius: 7px; background: #1e2329; color: #f5f5f5; box-shadow: 0 8px 22px rgba(24, 26, 32, .18); font-size: 11px; line-height: 1.3; }
+    .roi-tooltip-time { display: block; color: #aeb4bd; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 10px; }
+    .roi-tooltip-value { display: block; margin-top: 4px; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 13px; font-variant-numeric: tabular-nums; }
+    .asset-list { display: grid; gap: 15px; }
+    .asset-row { display: grid; grid-template-columns: 76px minmax(80px, 1fr) 58px; align-items: center; gap: 10px; font-size: 12px; font-weight: 680; font-variant-numeric: tabular-nums; }
+    .asset-row > span { text-align: right; font-family: ui-monospace, "SFMono-Regular", Consolas, monospace; font-size: 11px; }
+    .bar { height: 4px; border-radius: 999px; background: var(--soft); overflow: hidden; }
+    .bar i { display: block; height: 100%; border-radius: 999px; background: var(--yellow-hover); }
+    .position-card { padding: 20px 18px; display: grid; gap: 16px; }
+    .position-card + .position-card { border-top: 1px solid var(--line); }
+    .symbol-line { display: flex; align-items: center; flex-wrap: wrap; gap: 8px; font-size: 17px; font-weight: 760; letter-spacing: -.015em; }
     .chip { min-height: 25px; padding: 5px 8px; border-radius: 6px; display: inline-flex; align-items: center; font-size: 12px; line-height: 1; font-weight: 720; background: var(--soft); color: #5d6470; }
-    .chip.short { background: var(--red); color: #fff; }
-    .chip.long { background: var(--green); color: #fff; }
-    .position-main { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 12px; }
-    .table-wrap { overflow: auto; }
+    .chip.short { background: #fff0f2; color: var(--red); }
+    .chip.long { background: #eaf8f2; color: var(--green); }
+    .chip.partial { background: #fff3bf; color: #7a5a00; }
+    .chip.closed, .chip.done-group { background: #eef1f4; color: #565d67; }
+    .chip.open-group { background: #e8f7ef; color: #12784e; }
+    .chip.unknown-group { background: #f5edf8; color: #77438b; }
+    .position-main { display: grid; grid-template-columns: repeat(5, minmax(0, 1fr)); gap: 1px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--line); overflow: hidden; }
+    .position-main .metric { min-height: 88px; padding: 13px; }
+    .position-main .value { font-size: 16px; }
+    .table-wrap { overflow: auto; scrollbar-color: var(--line-strong) transparent; }
     table { width: 100%; border-collapse: collapse; min-width: 880px; }
-    th, td { padding: 12px 14px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-size: 13px; }
-    th { color: var(--muted); background: #fbfbfc; font-size: 12px; }
+    th, td { padding: 13px 15px; border-bottom: 1px solid var(--line); text-align: right; white-space: nowrap; font-size: 12px; font-variant-numeric: tabular-nums; }
+    th { position: sticky; top: 0; color: var(--muted); background: var(--soft); font-size: 11px; font-weight: 680; }
+    tbody tr:hover { background: #fafafa; }
     th:first-child, td:first-child, th:nth-child(2), td:nth-child(2) { text-align: left; }
-    .record-list { display: grid; gap: 10px; }
-    .record { border: 1px solid var(--line); border-radius: var(--radius); padding: 13px; display: grid; grid-template-columns: 1fr auto; gap: 12px; align-items: start; }
-    .record p { margin: 8px 0 0; color: #333; line-height: 1.5; font-size: 13px; }
+    .record-list { display: grid; gap: 0; padding-block: 0; }
+    .record { padding: 15px 0; display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px; align-items: start; }
+    .record + .record { border-top: 1px solid var(--line); }
+    .record p { margin: 7px 0 0; color: #3d424a; line-height: 1.55; font-size: 12px; }
     .empty { padding: 42px 16px; color: var(--muted); text-align: center; font-weight: 650; }
     .note { color: var(--muted); font-size: 12px; line-height: 1.45; }
+    .loading-state { min-height: 220px; padding: 24px; display: grid; align-content: center; gap: 12px; }
+    .skeleton { height: 13px; border-radius: 5px; background: var(--soft); }
+    .skeleton:nth-child(1) { width: 32%; }
+    .skeleton:nth-child(2) { width: 74%; }
+    .skeleton:nth-child(3) { width: 58%; }
+    .error-state { min-height: 220px; padding: 36px 20px; display: grid; place-content: center; justify-items: center; gap: 9px; text-align: center; }
+    .error-state strong { font-size: 15px; }
+    .error-state p { max-width: 52ch; margin: 0; color: var(--muted); font-size: 12px; line-height: 1.55; }
+    @media (max-width: 1400px) {
+      .grid-2 { grid-template-columns: 1fr; }
+    }
+    @media (max-width: 1180px) {
+      .app-shell { grid-template-columns: 248px minmax(0, 1fr); }
+      .message-sidebar { grid-column: 2; position: static; height: auto; margin: 0 clamp(18px, 2.4vw, 36px) 36px; padding: 18px; border: 1px solid var(--line); border-radius: var(--radius); background: var(--panel); }
+      .message-board { min-height: 300px; }
+    }
     @media (max-width: 900px) {
-      .shell { padding: 14px; }
+      .app-shell { display: block; }
+      .trader-sidebar { position: fixed; inset: 0 auto 0 0; width: min(82vw, 300px); height: 100dvh; padding-top: 20px; transform: translateX(-100%); transition: transform .2s ease; box-shadow: 18px 0 48px rgba(24, 26, 32, .16); z-index: 40; }
+      .trader-sidebar.open { transform: translateX(0); }
+      .sidebar-backdrop { position: fixed; inset: 0; display: block; background: rgba(24, 26, 32, .42); z-index: 30; }
+      .sidebar-backdrop[hidden] { display: none; }
+      body.sidebar-open { overflow: hidden; }
+      .shell { padding: 16px; }
+      .message-sidebar { margin: 0 16px 32px; }
       .topbar { align-items: flex-start; }
+      .menu-btn { display: grid; }
       .kpis, .metrics, .position-main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
       .grid-2 { grid-template-columns: 1fr; }
     }
-    @media (max-width: 560px) {
-      .topbar { align-items: flex-start; gap: 10px; }
+    @media (max-width: 600px) {
+      .shell { width: 100%; padding: 10px 10px 28px; gap: 10px; overflow-x: hidden; }
+      .message-sidebar { margin: 0 10px 28px; padding: 16px 14px; }
+      .message-board { min-height: 280px; }
+      .topbar { position: sticky; top: 0; z-index: 20; min-height: 62px; margin: 0 -10px; padding: 9px 88px 8px 10px; align-items: center; gap: 8px; background: rgba(245, 245, 245, .96); border-bottom: 1px solid rgba(216, 220, 225, .7); backdrop-filter: blur(12px); }
       .left-head { flex: 1 1 auto; min-width: 0; }
-      .actions { flex-wrap: wrap; justify-content: flex-end; }
-      .trader-menu { width: min(280px, calc(100vw - 28px)); top: 50px; }
-      h1 { font-size: 22px; }
-      .sub { font-size: 12px; }
-      .kpis, .metrics, .position-main { grid-template-columns: 1fr; }
-      .value { font-size: 18px; }
+      .menu-btn { width: 38px; height: 38px; }
+      h1 { max-width: 43vw; font-size: 18px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+      .sub { max-width: 50vw; margin-top: 3px; flex-wrap: nowrap; overflow: hidden; font-size: 10px; white-space: nowrap; }
+      .actions { position: absolute; top: 11px; right: 10px; }
+      .btn { min-height: 36px; padding: 8px 11px; font-size: 12px; }
+      .current-trader { grid-template-columns: 38px minmax(0, 1fr); gap: 9px; }
+      .current-avatar-frame { width: 38px; height: 38px; }
+      .current-title-line { flex-wrap: nowrap; gap: 7px; }
+      .top-tags { flex-wrap: nowrap; min-width: 0; overflow: hidden; }
+      .top-tags .tag { display: none; white-space: nowrap; }
+      .top-tags .tag:first-child { display: inline-flex; padding-inline: 5px; font-size: 9px; }
+      .kpis { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .kpi { padding: 14px; }
+      .kpi .value { font-size: 17px; }
+      .tabs { top: 65px; display: grid; grid-auto-flow: column; grid-auto-columns: max-content; gap: 2px; padding: 5px; scroll-snap-type: x proximity; }
+      .tab { min-height: 36px; padding: 8px 10px; font-size: 13px; scroll-snap-align: start; }
+      .section-head { min-height: 52px; padding: 12px 14px; }
+      .section-body { padding: 14px; }
+      .metrics { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .metric { padding: 13px; }
+      .metrics .value { font-size: 14px; letter-spacing: -.055em; white-space: nowrap; }
+      .metrics .unit { margin-left: 3px; font-size: 9px; letter-spacing: -.02em; }
+      .position-card { padding: 17px 14px; }
+      .position-main { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+      .position-main .metric { min-height: 82px; }
+      .position-main .value { font-size: 14px; letter-spacing: -.055em; white-space: nowrap; }
+      .position-main .unit { margin-left: 3px; font-size: 9px; letter-spacing: -.02em; }
+      .value { font-size: 16px; }
+      .chart-wrap { height: 230px; }
+      .roi-chart { padding: 16px 4px 30px 45px; }
+      .roi-y-labels { top: 16px; bottom: 30px; width: 38px; font-size: 8px; }
+      .roi-x-labels { left: 45px; right: 4px; font-size: 8px; }
       .record { grid-template-columns: 1fr; }
+      .record > .note { justify-self: start; }
+    }
+    @media (max-width: 360px) {
+      .tab { padding-inline: 8px; font-size: 12px; }
+      .metrics, .position-main { grid-template-columns: 1fr; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+      html { scroll-behavior: auto; }
+      *, *::before, *::after { transition-duration: .01ms !important; }
     }
   </style>
 </head>
 <body>
-  <main class="shell">
-    <header class="topbar">
-      <div class="left-head">
-        <button class="menu-btn" id="menuBtn" aria-label="切换交易员">☰</button>
-        <div class="identity">
-          <img class="avatar" id="avatar" alt="" />
-          <div>
-            <h1 id="name">带单员追踪台</h1>
-            <div class="sub" id="meta">等待数据</div>
+  <main class="app-shell">
+    <aside class="trader-sidebar" id="traderSidebar" aria-label="带单员列表">
+      <div class="sidebar-brand">
+        <strong>Binance 带单追踪</strong>
+      </div>
+      <div class="sidebar-list-head">
+        <span>带单员</span>
+        <span id="traderCount">0</span>
+      </div>
+      <div class="trader-list" id="traderList">
+        <div class="sidebar-loading">正在加载带单员</div>
+      </div>
+    </aside>
+    <div class="sidebar-backdrop" id="sidebarBackdrop" hidden></div>
+
+    <section class="shell">
+      <header class="topbar">
+        <div class="left-head">
+          <button class="menu-btn" id="menuBtn" aria-label="打开带单员列表" aria-controls="traderSidebar" aria-expanded="false">☰</button>
+          <div class="current-trader">
+            <div class="current-avatar-frame">
+              <img class="current-avatar" id="currentAvatar" alt="" hidden />
+              <span id="currentAvatarFallback" aria-hidden="true">带</span>
+            </div>
+            <div class="current-trader-copy">
+              <div class="current-title-line">
+                <h1 id="currentTraderName">带单员</h1>
+                <div class="tag-row top-tags" id="tags" aria-label="带单员标签"></div>
+              </div>
+            </div>
           </div>
         </div>
-        <div class="trader-menu" id="traderMenu"></div>
-      </div>
-      <div class="actions">
-        <button class="btn" id="scrollTop">回到顶部</button>
-        <button class="btn primary" id="pollBtn">立即刷新</button>
-      </div>
-    </header>
+        <div class="actions">
+          <a class="btn primary" id="copyTradeCta" href="https://lite.alphafox.app/zh/register?ref=WAYTOWEB4" target="_blank" rel="noopener noreferrer">立即跟单</a>
+        </div>
+      </header>
 
     <section class="panel leader">
-      <div class="tag-row" id="tags"></div>
       <div class="kpis">
         <div class="kpi"><span class="label">带单余额 USDT</span><strong class="value" id="marginBalance">--</strong></div>
         <div class="kpi"><span class="label">资产管理规模 USDT</span><strong class="value" id="aum">--</strong></div>
         <div class="kpi"><span class="label">跟单用户</span><strong class="value" id="copiers">--</strong></div>
-        <div class="kpi"><span class="label">最近交易</span><strong class="value small" id="lastTrade">--</strong></div>
+        <div class="kpi"><span class="label">最新公开订单</span><strong class="value small" id="lastTrade">--</strong></div>
       </div>
     </section>
 
-    <nav class="tabs" aria-label="栏目">
-      <button class="tab active" data-tab="performance">项目表现</button>
-      <button class="tab" data-tab="positions">持有仓位</button>
-      <button class="tab" data-tab="history">仓位历史</button>
-      <button class="tab" data-tab="records">最新交易记录</button>
+    <nav class="tabs" aria-label="栏目" role="tablist">
+      <button class="tab active" data-tab="performance" role="tab" aria-selected="true">项目表现</button>
+      <button class="tab" data-tab="positions" role="tab" aria-selected="false">持有仓位</button>
+      <button class="tab" data-tab="history" role="tab" aria-selected="false">仓位历史</button>
+      <button class="tab" data-tab="records" role="tab" aria-selected="false">最新交易记录</button>
     </nav>
 
-    <section class="content" id="content"></section>
+    <section class="content" id="content" aria-live="polite" aria-busy="true">
+      <div class="panel loading-state" aria-label="正在加载公开数据">
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+        <div class="skeleton"></div>
+      </div>
+    </section>
+    </section>
+
+    <aside class="message-sidebar" aria-labelledby="messageTitle">
+      <section class="message-board">
+        <div class="message-head">
+          <h2 id="messageTitle">AlphaFox 社群</h2>
+        </div>
+        <p class="message-intro">不只看收益曲线，也聊仓位、节奏和风险。进群一起跟踪带单员的真实变化。</p>
+
+        <a class="community-cta" href="https://t.me/+Ic6T-RcW-MxmNTIx" target="_blank" rel="noopener noreferrer" aria-label="加入我们TG，一起交流致富">
+          <strong>加入我们TG，一起交流致富</strong>
+        </a>
+
+        <div class="notice-list" aria-label="社群注意事项">
+          <div class="notice-item">
+            <strong>好成绩，马上上榜</strong>
+            <p>我们会实时更新带单员榜单，表现优质、收益率领先的带单员都会及时补进来。</p>
+          </div>
+          <div class="notice-item">
+            <strong>名额有限，手慢无</strong>
+            <p>官方每位带单员的跟单名额有限。想要 1:1 跟单，欢迎加入社群，或者直接注册 AlphaFox 开始跟单。</p>
+          </div>
+        </div>
+      </section>
+    </aside>
   </main>
 
   <script>
@@ -152,6 +332,8 @@
     let activeTab = "performance";
     let activePortfolioId = localStorage.getItem("activePortfolioId") || "5075281354358777856";
     let traderList = [];
+    const traderProfiles = new Map();
+    const desktopSidebarQuery = matchMedia("(min-width: 901px)");
 
     function num(value) { const parsed = Number(value); return Number.isFinite(parsed) ? parsed : 0; }
     function fmt(value, digits = 2) { return num(value).toLocaleString("en-US", { minimumFractionDigits: digits, maximumFractionDigits: digits }); }
@@ -159,14 +341,34 @@
     function signed(value, digits = 2, unit = "") { const safe = num(value); return `${safe >= 0 ? "+" : ""}${fmt(safe, digits)}${unit}`; }
     function compact(value) { const safe = num(value); const abs = Math.abs(safe); if (abs >= 1_000_000) return `${fmt(safe / 1_000_000, 2)}M`; if (abs >= 1_000) return `${fmt(safe / 1_000, 1)}K`; return fmt(safe, 2); }
     function dt(ms) { if (!ms) return "--"; const d = new Date(num(ms)); const p = (v) => String(v).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())} ${p(d.getHours())}:${p(d.getMinutes())}`; }
+    function day(ms) { if (!ms) return "--"; const d = new Date(num(ms)); const p = (v) => String(v).padStart(2, "0"); return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`; }
     function pnlClass(value) { return num(value) >= 0 ? "good" : "bad"; }
     function sideText(side) { return String(side).toUpperCase() === "LONG" ? "多" : "空"; }
     function sideClass(side) { return String(side).toUpperCase() === "LONG" ? "long" : "short"; }
+    function orderTime(order) { return num(order?.orderUpdateTime || order?.orderTime || order?.time); }
+    function escapeHtml(value) { return String(value ?? "").replace(/[&<>"']/g, (char) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[char])); }
     function orderAction(order) {
       const pos = String(order.positionSide || "").toUpperCase();
       const side = String(order.side || "").toUpperCase();
       const open = (pos === "LONG" && side === "BUY") || (pos === "SHORT" && side === "SELL");
       return `${open ? "开" : "平"}${sideText(pos)}`;
+    }
+
+    function historyActionText(item) {
+      if (item.status === "部分平仓") return "部分平仓";
+      if (item.status === "最终平仓" || item.status === "完全平仓") return "完全平仓";
+      return "平仓记录";
+    }
+    function historyActionClass(item) { return item.status === "部分平仓" ? "partial" : "closed"; }
+    function historyFinalText(item) {
+      if (item.groupStatus === "仍有剩余") return "仍有未平";
+      if (item.groupStatus === "已全部平仓" || item.status === "完全平仓") return "已全部平仓";
+      return "资料不足";
+    }
+    function historyFinalClass(item) {
+      if (item.groupStatus === "仍有剩余") return "open-group";
+      if (item.groupStatus === "已全部平仓" || item.status === "完全平仓") return "done-group";
+      return "unknown-group";
     }
 
     function estimateLiquidationPrice(pos, lev) {
@@ -179,65 +381,225 @@
 
     function renderHeader(data) {
       const detail = data.detail || {};
-      $("#name").textContent = detail.nickname || "Binance 带单员";
-      $("#avatar").src = detail.avatarUrl || "";
-      $("#meta").textContent = [`portfolioId ${data.portfolioId || "--"}`, data.polledAt ? `更新 ${new Date(data.polledAt).toLocaleString("zh-CN", { hour12: false })}` : "", `5分钟轮询`].filter(Boolean).join(" · ");
+      const traderName = detail.nickname || "Binance 带单员";
+      traderProfiles.set(data.portfolioId, data);
+      renderTraderList();
+      $("#currentTraderName").textContent = traderName;
+      $("#currentAvatarFallback").textContent = traderName.slice(0, 1);
+      const avatar = $("#currentAvatar");
+      if (detail.avatarUrl) {
+        avatar.src = detail.avatarUrl;
+        avatar.alt = `${traderName}头像`;
+        avatar.hidden = false;
+        $("#currentAvatarFallback").hidden = true;
+      } else {
+        avatar.removeAttribute("src");
+        avatar.hidden = true;
+        $("#currentAvatarFallback").hidden = false;
+      }
       $("#marginBalance").textContent = fmt(data.marginBalance, 2);
       $("#aum").textContent = fmt(data.aumAmount, 2);
       $("#copiers").textContent = `${trim(detail.currentCopyCount, 0)}/${trim(detail.maxCopyCount, 0)}`;
-      $("#lastTrade").textContent = dt(data.lastTradeTime);
+      const latestPublicOrderTime = num(data.latestPublicOrderTime) || orderTime(data.latestOrders?.[0]);
+      $("#lastTrade").textContent = latestPublicOrderTime ? dt(latestPublicOrderTime) : "暂无记录";
       const tags = (detail.tagItemVos || []).slice(0, 4).map((tag) => tag.tagLangKeyMessage || tag.tagName);
-      $("#tags").innerHTML = tags.map((tag) => `<span class="tag">${tag}</span>`).join("");
+      $("#tags").innerHTML = tags.map((tag) => `<span class="tag">${escapeHtml(tag)}</span>`).join("");
     }
 
-    function renderTraderMenu() {
-      const menu = $("#traderMenu");
-      menu.innerHTML = traderList.map((trader) => `
-        <button class="trader-option ${trader.portfolioId === activePortfolioId ? "active" : ""}" data-portfolio-id="${trader.portfolioId}">
-          <strong>${trader.label}</strong>
-          <span>${trader.portfolioId}${trader.fallback ? " · 资料兜底" : ""}</span>
+    function renderTraderList() {
+      const list = $("#traderList");
+      list.innerHTML = traderList.map((trader) => {
+        const profile = traderProfiles.get(trader.portfolioId) || {};
+        const detail = profile.detail || {};
+        const label = detail.nickname || trader.label || "Binance 带单员";
+        const avatar = detail.avatarUrl
+          ? `<img class="trader-avatar" src="${escapeHtml(detail.avatarUrl)}" alt="" />`
+          : `<span class="trader-avatar" aria-hidden="true">${escapeHtml(label.slice(0, 1))}</span>`;
+        const hasProfile = traderProfiles.has(trader.portfolioId);
+        const summary = hasProfile
+          ? `跟单用户 ${trim(detail.currentCopyCount, 0)}/${trim(detail.maxCopyCount, 0)}`
+          : "跟单用户读取中";
+        const active = trader.portfolioId === activePortfolioId;
+        return `
+        <button class="trader-option ${active ? "active" : ""}" data-portfolio-id="${escapeHtml(trader.portfolioId)}" aria-current="${active ? "true" : "false"}">
+          ${avatar}
+          <span class="trader-copy">
+            <strong>${escapeHtml(label)}</strong>
+            <span class="trader-summary">${summary}</span>
+          </span>
         </button>
-      `).join("");
-      $$(".trader-option", menu).forEach((button) => {
+      `;
+      }).join("");
+      $$(".trader-option", list).forEach((button) => {
         button.addEventListener("click", async () => {
           activePortfolioId = button.dataset.portfolioId;
           localStorage.setItem("activePortfolioId", activePortfolioId);
-          menu.classList.remove("open");
-          renderTraderMenu();
+          closeSidebar();
+          renderTraderList();
           await loadSnapshot();
         });
       });
     }
 
+    async function fetchJson(url) {
+      const response = await fetch(url);
+      if (!response.ok) throw new Error(`请求失败 (${response.status})`);
+      const data = await response.json();
+      if (data && data.error) throw new Error(data.error);
+      return data;
+    }
+
     async function loadTraders() {
-      const response = await fetch("/api/traders");
-      traderList = await response.json();
+      traderList = await fetchJson("/api/traders");
       if (!traderList.some((trader) => trader.portfolioId === activePortfolioId)) {
         activePortfolioId = traderList[0]?.portfolioId || activePortfolioId;
         localStorage.setItem("activePortfolioId", activePortfolioId);
       }
-      renderTraderMenu();
+      $("#traderCount").textContent = String(traderList.length);
+      renderTraderList();
+      Promise.all(traderList.map(async (trader) => {
+        try {
+          return await fetchJson(`/api/snapshot?portfolioId=${encodeURIComponent(trader.portfolioId)}`);
+        } catch {
+          return null;
+        }
+      })).then((profiles) => {
+        profiles.filter(Boolean).forEach((profile) => traderProfiles.set(profile.portfolioId, profile));
+        renderTraderList();
+      });
     }
 
-    function chart(points, field) {
-      if (!points || points.length < 2) return `<div class="empty">继续轮询后生成本地曲线</div>`;
-      const values = points.map((point) => num(point[field]));
-      const min = Math.min(...values), max = Math.max(...values), span = max - min || 1;
-      const width = 720, height = 250, pad = 30;
-      const coords = values.map((value, index) => [pad + index / (values.length - 1) * (width - pad * 2), pad + (max - value) / span * (height - pad * 2)]);
+    function niceStep(range, targetTicks = 4) {
+      const rough = Math.max(range, 1) / targetTicks;
+      const power = 10 ** Math.floor(Math.log10(rough));
+      const fraction = rough / power;
+      const niceFraction = fraction <= 1 ? 1 : fraction <= 2 ? 2 : fraction <= 5 ? 5 : 10;
+      return niceFraction * power;
+    }
+
+    function roiChart(points) {
+      const valid = (points || [])
+        .map((point) => ({ time: num(point.time), roi: num(point.roi) }))
+        .filter((point) => point.time > 0)
+        .sort((a, b) => a.time - b.time);
+      if (valid.length < 2) return `<div class="empty">暂无足够的 ROI 时间序列</div>`;
+
+      const values = valid.map((point) => point.roi);
+      const startTime = valid[0].time;
+      const endTime = valid.at(-1).time;
+      const timeSpan = Math.max(endTime - startTime, 1);
+      const rawMin = Math.min(0, ...values);
+      const rawMax = Math.max(0, ...values);
+      const step = niceStep(rawMax - rawMin);
+      const yMin = Math.floor(rawMin / step) * step;
+      let yMax = Math.ceil(rawMax / step) * step;
+      if (yMax === yMin) yMax += step;
+      const ySpan = yMax - yMin;
+      const yTicks = [];
+      for (let value = yMin; value <= yMax + step / 2; value += step) yTicks.push(value);
+
+      const width = 720;
+      const height = 250;
+      const coords = valid.map((point) => [
+        (point.time - startTime) / timeSpan * width,
+        (yMax - point.roi) / ySpan * height
+      ]);
       const line = coords.map(([x, y], index) => `${index ? "L" : "M"}${x.toFixed(1)},${y.toFixed(1)}`).join(" ");
-      const area = `${line} L${coords.at(-1)[0].toFixed(1)},${height - pad} L${coords[0][0].toFixed(1)},${height - pad} Z`;
-      return `<svg class="chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none"><defs><linearGradient id="fill" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="#24b77a" stop-opacity=".20"/><stop offset="100%" stop-color="#24b77a" stop-opacity="0"/></linearGradient></defs><line x1="${pad}" y1="${pad}" x2="${width - pad}" y2="${pad}" stroke="#e8ebef"/><line x1="${pad}" y1="${height / 2}" x2="${width - pad}" y2="${height / 2}" stroke="#e8ebef"/><line x1="${pad}" y1="${height - pad}" x2="${width - pad}" y2="${height - pad}" stroke="#e8ebef"/><path d="${area}" fill="url(#fill)"/><path d="${line}" fill="none" stroke="#24b77a" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/></svg>`;
+      const zeroY = yMax / ySpan * height;
+      const area = `${line} L${coords.at(-1)[0].toFixed(1)},${zeroY.toFixed(1)} L${coords[0][0].toFixed(1)},${zeroY.toFixed(1)} Z`;
+      const positive = valid.at(-1).roi >= 0;
+      const stroke = positive ? "#0a9f6e" : "#d9304f";
+      const fillId = positive ? "roiFillPositive" : "roiFillNegative";
+      const gridLines = [...yTicks].reverse().map((value) => {
+        const y = (yMax - value) / ySpan * height;
+        const isZero = Math.abs(value) < step / 1000;
+        return `<line x1="0" y1="${y.toFixed(1)}" x2="${width}" y2="${y.toFixed(1)}" stroke="${isZero ? "#d8dce1" : "#e8eaed"}" stroke-width="${isZero ? "1.2" : "1"}"/>`;
+      }).join("");
+
+      const weekCount = Math.max(1, timeSpan / (7 * 864e5));
+      const xTickCount = Math.min(6, Math.max(2, Math.round(weekCount) + 1));
+      const xTicks = Array.from({ length: xTickCount }, (_, index) => {
+        const ratio = index / (xTickCount - 1);
+        const date = new Date(startTime + timeSpan * ratio);
+        const label = `${String(date.getMonth() + 1).padStart(2, "0")}-${String(date.getDate()).padStart(2, "0")}`;
+        return { ratio, label };
+      });
+      const verticalLines = xTicks.map((tick) => `<line x1="${(tick.ratio * width).toFixed(1)}" y1="0" x2="${(tick.ratio * width).toFixed(1)}" y2="${height}" stroke="#f0f1f3"/>`).join("");
+      const ariaLabel = `ROI 收益曲线，从 ${xTicks[0].label} 到 ${xTicks.at(-1).label}，最新累计 ROI ${fmt(valid.at(-1).roi, 2)}%`;
+
+      return `<div class="roi-chart" role="img" aria-label="${ariaLabel}">
+        <span class="roi-axis-title" aria-hidden="true">ROI (%)</span>
+        <div class="roi-y-labels" aria-hidden="true">${[...yTicks].reverse().map((value) => `<span>${trim(value, 1)}%</span>`).join("")}</div>
+        <div class="roi-plot" aria-hidden="true" style="--roi-stroke:${stroke}">
+          <svg class="chart" viewBox="0 0 ${width} ${height}" preserveAspectRatio="none">
+            <defs><linearGradient id="${fillId}" x1="0" y1="0" x2="0" y2="1"><stop offset="0%" stop-color="${stroke}" stop-opacity=".20"/><stop offset="100%" stop-color="${stroke}" stop-opacity="0"/></linearGradient></defs>
+            ${verticalLines}${gridLines}<path d="${area}" fill="url(#${fillId})"/><path d="${line}" fill="none" stroke="${stroke}" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+          <span class="roi-hover-line"></span>
+          <span class="roi-hover-dot"></span>
+          <span class="roi-tooltip"><span class="roi-tooltip-time"></span><strong class="roi-tooltip-value"></strong></span>
+        </div>
+        <div class="roi-x-labels" aria-hidden="true">${xTicks.map((tick) => `<span class="roi-x-tick" style="--x:${(tick.ratio * 100).toFixed(2)}%">${tick.label}</span>`).join("")}</div>
+      </div>`;
+    }
+
+    function bindRoiChart(points) {
+      const plot = $(".roi-plot");
+      if (!plot) return;
+      const valid = (points || [])
+        .map((point) => ({ time: num(point.time), roi: num(point.roi) }))
+        .filter((point) => point.time > 0)
+        .sort((a, b) => a.time - b.time);
+      if (valid.length < 2) return;
+
+      const startTime = valid[0].time;
+      const endTime = valid.at(-1).time;
+      const timeSpan = Math.max(endTime - startTime, 1);
+      const values = valid.map((point) => point.roi);
+      const rawMin = Math.min(0, ...values);
+      const rawMax = Math.max(0, ...values);
+      const step = niceStep(rawMax - rawMin);
+      const yMin = Math.floor(rawMin / step) * step;
+      let yMax = Math.ceil(rawMax / step) * step;
+      if (yMax === yMin) yMax += step;
+      const ySpan = yMax - yMin;
+      const hoverLine = $(".roi-hover-line", plot);
+      const hoverDot = $(".roi-hover-dot", plot);
+      const tooltip = $(".roi-tooltip", plot);
+      const tooltipTime = $(".roi-tooltip-time", plot);
+      const tooltipValue = $(".roi-tooltip-value", plot);
+
+      function showPoint(clientX) {
+        const rect = plot.getBoundingClientRect();
+        const ratio = Math.max(0, Math.min(1, (clientX - rect.left) / Math.max(rect.width, 1)));
+        const targetTime = startTime + ratio * timeSpan;
+        const point = valid.reduce((closest, item) => Math.abs(item.time - targetTime) < Math.abs(closest.time - targetTime) ? item : closest, valid[0]);
+        const x = (point.time - startTime) / timeSpan * rect.width;
+        const y = (yMax - point.roi) / ySpan * rect.height;
+        hoverLine.style.left = `${x}px`;
+        hoverDot.style.left = `${x}px`;
+        hoverDot.style.top = `${y}px`;
+        tooltip.style.left = `${Math.max(4, Math.min(rect.width - 136, x + (x > rect.width * .72 ? -140 : 10)))}px`;
+        tooltip.style.top = `${Math.max(4, Math.min(rect.height - 58, y - 60))}px`;
+        tooltipTime.textContent = day(point.time);
+        tooltipValue.textContent = `ROI ${signed(point.roi, 2, "%")}`;
+        plot.classList.add("hovering");
+      }
+
+      plot.addEventListener("pointermove", (event) => showPoint(event.clientX));
+      plot.addEventListener("pointerdown", (event) => showPoint(event.clientX));
+      plot.addEventListener("pointerleave", () => plot.classList.remove("hovering"));
     }
 
     function renderPerformance() {
       const perf = snapshot.performance || {};
       const detail = snapshot.detail || {};
       const currentPnl = (snapshot.positions || []).reduce((sum, pos) => sum + num(pos.unrealizedPnl), 0);
+      const roiPoints = perf.curve || [];
       content.innerHTML = `
         <section class="grid-2">
           <div class="panel">
-            <div class="section-head"><h2>项目表现</h2><span class="note">基于 Binance 公开详情与本地已抓订单</span></div>
+            <div class="section-head"><h2>项目表现</h2></div>
             <div class="section-body">
               <div class="metrics">
                 <div class="metric"><span class="label">已抓订单盈亏</span><strong class="value ${pnlClass(perf.pnl)}">${signed(perf.pnl, 2)}<span class="unit">USDT</span></strong></div>
@@ -250,21 +612,22 @@
             </div>
           </div>
           <div class="panel">
-            <div class="section-head"><h2>资产偏好</h2><span class="note">按已抓订单名义价值</span></div>
+            <div class="section-head"><h2>资产偏好</h2></div>
             <div class="section-body asset-list">
               ${(snapshot.assetPreference || []).map((asset) => `<div class="asset-row"><strong>${asset.asset}</strong><div class="bar"><i style="width:${Math.max(3, asset.pct)}%"></i></div><span>${fmt(asset.pct, 2)}%</span></div>`).join("") || `<div class="empty">暂无资产偏好</div>`}
             </div>
           </div>
         </section>
         <section class="panel">
-          <div class="section-head"><h2>带单余额曲线</h2><span class="note">真实本地轮询快照，不做不可用的时间切换</span></div>
-          <div class="section-body chart-wrap">${chart(snapshot.balanceCurve, "balance")}</div>
+          <div class="section-head"><h2>ROI 收益曲线</h2></div>
+          <div class="section-body chart-wrap">${roiChart(roiPoints)}</div>
         </section>`;
+      bindRoiChart(roiPoints);
     }
 
     function renderPositions() {
       const positions = snapshot.positions || [];
-      content.innerHTML = `<section class="panel"><div class="section-head"><h2>持有仓位</h2><span class="note">从最近一次平仓后的公开开仓记录推断</span></div><div class="section-body">${positions.length ? positions.map((pos) => {
+      content.innerHTML = `<section class="panel"><div class="section-head"><h2>持有仓位</h2></div><div class="section-body">${positions.length ? positions.map((pos) => {
         const roi = pos.notional ? pos.unrealizedPnl / pos.notional * 100 : 0;
         const lev = snapshot.marginBalance ? pos.notional / snapshot.marginBalance : 0;
         const margin = lev > 0 ? pos.notional / lev : 0;
@@ -290,14 +653,14 @@
 
     function renderHistory() {
       const rows = snapshot.closedPositionHistory || [];
-      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">已平仓记录，按平仓时间倒序</span></div><div class="table-wrap"><table><thead><tr><th>合约</th><th>方向</th><th>平仓盈亏</th><th>已平仓量</th><th>开仓价</th><th>平仓均价</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? rows.map((item) => `<tr><td>${item.symbol}</td><td><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></td><td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td><td>${trim(item.closedQty, 4)} ${item.baseAsset}</td><td>${fmt(item.openPrice, 5)}</td><td>${fmt(item.closeAvgPrice, 5)}</td><td>${dt(item.openTime)}</td><td>${dt(item.closeTime)}</td></tr>`).join("") : `<tr><td colspan="8"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div></section>`;
+      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2></div><div class="table-wrap"><table><thead><tr><th>合约</th><th>方向</th><th>动作</th><th>平仓盈亏</th><th>已平仓量</th><th>最终状态</th><th>开仓价</th><th>平仓价</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? rows.map((item) => `<tr><td>${item.symbol}</td><td><span class="chip ${sideClass(item.side)}">${sideText(item.side)}</span></td><td><span class="chip ${historyActionClass(item)}">${historyActionText(item)}</span></td><td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td><td>${trim(item.closedQty, 4)} ${item.baseAsset}</td><td><span class="chip ${historyFinalClass(item)}">${historyFinalText(item)}</span></td><td>${fmt(item.openPrice, 5)}</td><td>${fmt(item.closeAvgPrice, 5)}</td><td>${dt(item.openTime)}</td><td>${dt(item.closeTime)}</td></tr>`).join("") : `<tr><td colspan="10"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div></section>`;
     }
 
     function renderRecords() {
       const orders = snapshot.latestOrders || [];
-      content.innerHTML = `<section class="panel"><div class="section-head"><h2>最新交易记录</h2><span class="note">Binance 公开 order-history</span></div><div class="section-body record-list">${orders.length ? orders.map((order) => {
+      content.innerHTML = `<section class="panel"><div class="section-head"><h2>最新交易记录</h2></div><div class="section-body record-list">${orders.length ? orders.map((order) => {
         const qty = num(order.executedQty || order.qty), price = num(order.avgPrice || order.price), value = qty * price, pnl = num(order.totalPnl || order.realizedProfit);
-        return `<article class="record"><div><div class="symbol-line"><span class="chip ${sideClass(order.positionSide)}">${orderAction(order)}</span><span>${order.symbol}</span><span class="chip">${order.type || "MARKET"}</span></div><p>均价 ${fmt(price, 5)}，数量 ${trim(qty, 4)} ${order.baseAsset || ""}，名义价值 ${fmt(value, 2)} USDT${pnl ? `，已实现 <strong class="${pnlClass(pnl)}">${signed(pnl, 4)} USDT</strong>` : ""}。</p></div><div class="note">${dt(order.orderUpdateTime || order.time)}</div></article>`;
+        return `<article class="record"><div><div class="symbol-line"><span class="chip ${sideClass(order.positionSide)}">${orderAction(order)}</span><span>${order.symbol}</span><span class="chip">${order.type || "MARKET"}</span></div><p>均价 ${fmt(price, 5)}，数量 ${trim(qty, 4)} ${order.baseAsset || ""}，名义价值 ${fmt(value, 2)} USDT${pnl ? `，已实现 <strong class="${pnlClass(pnl)}">${signed(pnl, 4)} USDT</strong>` : ""}。</p></div><div class="note">${dt(orderTime(order))}</div></article>`;
       }).join("") : `<div class="empty">暂无交易记录</div>`}</div></section>`;
     }
 
@@ -306,18 +669,56 @@
       if (activeTab === "positions") renderPositions();
       if (activeTab === "history") renderHistory();
       if (activeTab === "records") renderRecords();
+      content.setAttribute("aria-busy", "false");
     }
     function render(data) { snapshot = data; renderHeader(data); renderActive(); }
-    async function loadSnapshot() { const response = await fetch(`/api/snapshot?portfolioId=${encodeURIComponent(activePortfolioId)}`); render(await response.json()); }
-    async function pollNow() { const button = $("#pollBtn"); button.disabled = true; try { const response = await fetch(`/api/poll?portfolioId=${encodeURIComponent(activePortfolioId)}`); render(await response.json()); } finally { button.disabled = false; } }
-    $$(".tab").forEach((tab) => tab.addEventListener("click", () => { activeTab = tab.dataset.tab; $$(".tab").forEach((item) => item.classList.toggle("active", item === tab)); renderActive(); }));
-    $("#menuBtn").addEventListener("click", () => $("#traderMenu").classList.toggle("open"));
-    document.addEventListener("click", (event) => {
-      if (!event.target.closest("#menuBtn") && !event.target.closest("#traderMenu")) $("#traderMenu").classList.remove("open");
+    function openSidebar() {
+      $("#traderSidebar").removeAttribute("inert");
+      $("#traderSidebar").classList.add("open");
+      $("#sidebarBackdrop").hidden = false;
+      document.body.classList.add("sidebar-open");
+      $("#menuBtn").setAttribute("aria-expanded", "true");
+    }
+    function closeSidebar() {
+      $("#traderSidebar").classList.remove("open");
+      if (desktopSidebarQuery.matches) $("#traderSidebar").removeAttribute("inert");
+      else $("#traderSidebar").setAttribute("inert", "");
+      $("#sidebarBackdrop").hidden = true;
+      document.body.classList.remove("sidebar-open");
+      $("#menuBtn").setAttribute("aria-expanded", "false");
+    }
+    function renderError(error) {
+      content.setAttribute("aria-busy", "false");
+      content.innerHTML = `<section class="panel error-state"><strong>数据暂时无法加载</strong><p>${error.message || "请检查本地服务后重试。"}</p><button class="btn primary" id="retryBtn">重新加载</button></section>`;
+      $("#retryBtn")?.addEventListener("click", loadSnapshot);
+    }
+    async function loadSnapshot() {
+      content.setAttribute("aria-busy", "true");
+      try {
+        render(await fetchJson(`/api/snapshot?portfolioId=${encodeURIComponent(activePortfolioId)}`));
+      } catch (error) {
+        renderError(error);
+      }
+    }
+    $$(".tab").forEach((tab) => tab.addEventListener("click", () => {
+      activeTab = tab.dataset.tab;
+      $$(".tab").forEach((item) => {
+        const selected = item === tab;
+        item.classList.toggle("active", selected);
+        item.setAttribute("aria-selected", String(selected));
+      });
+      renderActive();
+    }));
+    $("#menuBtn").addEventListener("click", () => $("#traderSidebar").classList.contains("open") ? closeSidebar() : openSidebar());
+    $("#sidebarBackdrop").addEventListener("click", closeSidebar);
+    document.addEventListener("keydown", (event) => { if (event.key === "Escape") closeSidebar(); });
+    desktopSidebarQuery.addEventListener("change", closeSidebar);
+    $("#currentAvatar").addEventListener("error", () => {
+      $("#currentAvatar").hidden = true;
+      $("#currentAvatarFallback").hidden = false;
     });
-    $("#pollBtn").addEventListener("click", pollNow);
-    $("#scrollTop").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
-    loadTraders().then(loadSnapshot);
+    closeSidebar();
+    loadTraders().then(loadSnapshot).catch(renderError);
     setInterval(loadSnapshot, 20_000);
   </script>
 </body>

@@ -40,7 +40,7 @@
     h2 { margin: 0; font-size: 15px; line-height: 1.25; font-weight: 760; letter-spacing: 0; }
     .sub { color: var(--muted); font-size: 13px; line-height: 1.4; }
     .actions { display: flex; gap: 8px; align-items: center; }
-    .btn { min-height: 36px; padding: 8px 12px; border-radius: var(--radius); background: var(--soft); font-size: 14px; font-weight: 700; }
+    .btn { min-height: 36px; padding: 8px 12px; border-radius: var(--radius); display: inline-flex; align-items: center; justify-content: center; background: var(--soft); color: inherit; font-size: 14px; font-weight: 700; text-decoration: none; white-space: nowrap; cursor: pointer; }
     .btn.primary { background: var(--yellow); color: #171717; }
     .panel { background: var(--panel); border: 1px solid var(--line); border-radius: var(--radius); overflow: hidden; }
     .leader { padding: 18px; display: grid; gap: 16px; }
@@ -208,7 +208,6 @@
       .desktop-meta { display: none; }
       .mobile-meta { display: inline; }
       .actions { position: absolute; top: 10px; right: 10px; flex: 0 0 auto; gap: 6px; }
-      #scrollTop { display: none; }
       .btn { min-height: 34px; padding: 8px 10px; border-radius: 10px; font-size: 13px; white-space: nowrap; }
       .btn.primary { padding-inline: 11px; }
       .trader-menu {
@@ -289,8 +288,7 @@
         <div class="trader-menu" id="traderMenu"></div>
       </div>
       <div class="actions">
-        <button class="btn" id="scrollTop">回到顶部</button>
-        <button class="btn primary" id="pollBtn">立即刷新</button>
+        <a class="btn primary" id="copyTradeCta" href="https://lite.alphafox.app/zh/register?ref=WAYTOWEB4" target="_blank" rel="noopener noreferrer">立即跟单</a>
       </div>
     </header>
 
@@ -300,7 +298,7 @@
         <div class="kpi"><span class="label">带单余额 USDT</span><strong class="value" id="marginBalance">--</strong></div>
         <div class="kpi"><span class="label">资产管理规模 USDT</span><strong class="value" id="aum">--</strong></div>
         <div class="kpi"><span class="label">跟单用户</span><strong class="value" id="copiers">--</strong></div>
-        <div class="kpi"><span class="label">最近交易</span><strong class="value small" id="lastTrade">--</strong></div>
+        <div class="kpi"><span class="label">最新公开订单</span><strong class="value small" id="lastTrade">--</strong></div>
       </div>
     </section>
 
@@ -378,17 +376,14 @@
       if (status === "仍有剩余") return "仍有未平";
       return "已全部平仓";
     }
-    function afterCloseText(item) {
-      return num(item.remainingQty) > 0 ? `还剩 ${trim(item.remainingQty, 4)} ${item.baseAsset}` : "已无剩余";
-    }
     function historySummaryText(item) {
       const closed = `${trim(item.closedQty, 4)} ${item.baseAsset}`;
-      if (!item.hasOpenBasis) return `这条只匹配到平仓记录：本次平掉 ${closed}，开仓来源不足。`;
+      if (!item.hasOpenBasis) return `累计平仓 ${closed}，暂未匹配到对应的 Binance 开仓记录。`;
       if (item.status === "部分平仓") {
-        const tail = groupStatusText(item) === "仍有剩余" ? "目前这组仓位还没有完全平完。" : "后面已经全部平完。";
-        return `本次先平掉 ${closed}，平完后当时${afterCloseText(item)}，${tail}`;
+        const tail = groupStatusText(item) === "仍有剩余" ? "这组仓位目前仍未完全平仓。" : "这组仓位后续已经全部平仓。";
+        return `累计平仓 ${closed}，${tail}`;
       }
-      return `本次平掉 ${closed}，这组仓位已平完。`;
+      return `累计平仓 ${closed}，这组仓位已全部平仓。`;
     }
     function orderAction(order) {
       const pos = String(order.positionSide || "").toUpperCase();
@@ -755,7 +750,8 @@
       $("#marginBalance").textContent = fmt(data.marginBalance, 2);
       $("#aum").textContent = fmt(data.aumAmount, 2);
       $("#copiers").textContent = `${trim(detail.currentCopyCount, 0)}/${trim(detail.maxCopyCount, 0)}`;
-      $("#lastTrade").textContent = dt(data.lastTradeTime);
+      const latestPublicOrderTime = num(data.latestPublicOrderTime) || orderTime(data.latestOrders?.[0]);
+      $("#lastTrade").textContent = latestPublicOrderTime ? dt(latestPublicOrderTime) : "暂无记录";
       const tags = (detail.tagItemVos || []).slice(0, 4).map((tag) => tag.tagLangKeyMessage || tag.tagName);
       $("#tags").innerHTML = tags.map((tag) => `<span class="tag">${tag}</span>`).join("");
     }
@@ -866,10 +862,10 @@
         <td><span class="chip ${historyStatusClass(item.status)}">${historyActionText(item)}</span></td>
         <td class="${pnlClass(item.realizedPnl)}">${signed(item.realizedPnl, 4)}</td>
         <td>${trim(item.closedQty, 4)} ${item.baseAsset}</td>
-        <td>${afterCloseText(item)}</td>
         <td><span class="chip ${groupStatusClass(item)}">${finalStateText(item)}</span></td>
         <td>${fmt(item.openPrice, 5)}</td>
         <td>${fmt(item.closeAvgPrice, 5)}</td>
+        <td>${dt(item.openTime)}</td>
         <td>${dt(item.closeTime)}</td>
       </tr>`).join("");
       const mobileRows = rows.map((item) => `<article class="history-card">
@@ -879,22 +875,21 @@
         </div>
         <div class="history-summary">${historySummaryText(item)}</div>
         <div class="history-grid">
-          <div class="mini-field"><span>本次平仓量</span><strong>${trim(item.closedQty, 4)} ${item.baseAsset}</strong></div>
-          <div class="mini-field"><span>平完后剩余</span><strong>${afterCloseText(item)}</strong></div>
+          <div class="mini-field"><span>已平仓量</span><strong>${trim(item.closedQty, 4)} ${item.baseAsset}</strong></div>
           <div class="mini-field"><span>开仓价</span><strong>${fmt(item.openPrice, 5)}</strong></div>
           <div class="mini-field"><span>平仓均价</span><strong>${fmt(item.closeAvgPrice, 5)}</strong></div>
           <div class="mini-field"><span>开仓时间</span><strong>${dt(item.openTime)}</strong></div>
           <div class="mini-field"><span>平仓时间</span><strong>${dt(item.closeTime)}</strong></div>
         </div>
       </article>`).join("");
-      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">每条记录显示本次平了多少、平完后还剩多少，以及这组仓位最后是否平完</span></div><div class="table-wrap desktop-table"><table><thead><tr><th>合约</th><th>方向</th><th>动作</th><th>平仓盈亏</th><th>本次平仓</th><th>平完后剩余</th><th>最终状态</th><th>开仓价</th><th>平仓价</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? tableRows : `<tr><td colspan="10"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div><div class="mobile-cards">${rows.length ? mobileRows : `<div class="empty">暂无仓位历史</div>`}</div></section>`;
+      content.innerHTML = `<section class="panel"><div class="section-head"><h2>仓位历史</h2><span class="note">Binance 官方仓位历史，部分平仓使用最近更新时间</span></div><div class="table-wrap desktop-table"><table><thead><tr><th>合约</th><th>方向</th><th>动作</th><th>平仓盈亏</th><th>已平仓量</th><th>最终状态</th><th>开仓价</th><th>平仓价</th><th>开仓时间</th><th>平仓时间</th></tr></thead><tbody>${rows.length ? tableRows : `<tr><td colspan="10"><div class="empty">暂无仓位历史</div></td></tr>`}</tbody></table></div><div class="mobile-cards">${rows.length ? mobileRows : `<div class="empty">暂无仓位历史</div>`}</div></section>`;
     }
 
     function renderRecords() {
       const orders = snapshot.latestOrders || [];
       content.innerHTML = `<section class="panel"><div class="section-head"><h2>最新交易记录</h2><span class="note">Binance 公开 order-history</span></div><div class="section-body record-list">${orders.length ? orders.map((order) => {
         const qty = num(order.executedQty || order.qty), price = num(order.avgPrice || order.price), value = qty * price, pnl = num(order.totalPnl || order.realizedProfit);
-        return `<article class="record"><div><div class="symbol-line"><span class="chip ${sideClass(order.positionSide)}">${orderAction(order)}</span><span>${order.symbol}</span><span class="chip">${order.type || "MARKET"}</span></div><p>均价 ${fmt(price, 5)}，数量 ${trim(qty, 4)} ${order.baseAsset || ""}，名义价值 ${fmt(value, 2)} USDT${pnl ? `，已实现 <strong class="${pnlClass(pnl)}">${signed(pnl, 4)} USDT</strong>` : ""}。</p></div><div class="note">${dt(order.orderUpdateTime || order.time)}</div></article>`;
+        return `<article class="record"><div><div class="symbol-line"><span class="chip ${sideClass(order.positionSide)}">${orderAction(order)}</span><span>${order.symbol}</span><span class="chip">${order.type || "MARKET"}</span></div><p>均价 ${fmt(price, 5)}，数量 ${trim(qty, 4)} ${order.baseAsset || ""}，名义价值 ${fmt(value, 2)} USDT${pnl ? `，已实现 <strong class="${pnlClass(pnl)}">${signed(pnl, 4)} USDT</strong>` : ""}。</p></div><div class="note">${dt(orderTime(order))}</div></article>`;
       }).join("") : `<div class="empty">暂无交易记录</div>`}</div></section>`;
     }
 
@@ -1093,7 +1088,6 @@
     }
     function render(data) { snapshot = data; processSimulation(data); renderHeader(data); renderActive(); }
     async function loadSnapshot() { const response = await fetch(`/api/snapshot?portfolioId=${encodeURIComponent(activePortfolioId)}&t=${Date.now()}`, { cache: "no-store" }); render(await response.json()); }
-    async function pollNow() { const button = $("#pollBtn"); button.disabled = true; try { const response = await fetch(`/api/poll?portfolioId=${encodeURIComponent(activePortfolioId)}&t=${Date.now()}`, { cache: "no-store" }); render(await response.json()); } finally { button.disabled = false; } }
     function syncTabs() { $$(".tab").forEach((item) => item.classList.toggle("active", item.dataset.tab === activeTab)); }
     syncTabs();
     $$(".tab").forEach((tab) => tab.addEventListener("click", () => { activeTab = tab.dataset.tab; syncTabs(); renderActive(); }));
@@ -1101,8 +1095,6 @@
     document.addEventListener("click", (event) => {
       if (!event.target.closest("#menuBtn") && !event.target.closest("#traderMenu")) $("#traderMenu").classList.remove("open");
     });
-    $("#pollBtn").addEventListener("click", pollNow);
-    $("#scrollTop").addEventListener("click", () => window.scrollTo({ top: 0, behavior: "smooth" }));
     loadTraders().then(loadSnapshot);
     setInterval(loadSnapshot, 20_000);
   </script>
