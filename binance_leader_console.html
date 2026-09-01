@@ -30,7 +30,7 @@
     button:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     button:active { transform: translateY(1px); }
     button:disabled { cursor: wait; opacity: .62; transform: none; }
-    .app-shell { width: min(100%, 1600px); min-height: 100dvh; margin: 0 auto; display: grid; grid-template-columns: 248px minmax(0, 1fr) 276px; background: var(--bg); }
+    .app-shell { width: min(100%, 1600px); min-height: 100dvh; margin: 0 auto; display: grid; grid-template-columns: 248px minmax(0, 1fr) 304px; background: var(--bg); }
     .shell { width: 100%; min-width: 0; padding: 24px clamp(18px, 2.4vw, 36px) 42px; display: grid; align-content: start; gap: 16px; }
     .trader-sidebar { position: sticky; top: 0; height: 100dvh; padding: 24px 14px 18px; display: grid; grid-template-rows: auto auto minmax(0, 1fr); gap: 18px; border-right: 1px solid var(--line); background: var(--panel-raised); z-index: 20; }
     .sidebar-brand { padding: 0 10px; }
@@ -51,19 +51,20 @@
     .sidebar-backdrop { display: none; }
     .message-sidebar { position: sticky; top: 0; height: 100dvh; min-width: 0; padding: 24px 18px; border-left: 1px solid var(--line); background: var(--panel-raised); align-self: start; }
     .message-board { min-height: 100%; display: flex; flex-direction: column; }
-    .message-head { min-height: 30px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
-    .message-intro { margin: 10px 0 16px; color: var(--muted); font-size: 12px; line-height: 1.6; }
-    .community-cta { min-height: 66px; padding: 12px 13px; border: 1px solid var(--yellow); border-radius: var(--control-radius); display: grid; align-content: center; gap: 4px; background: var(--yellow); color: var(--ink); text-decoration: none; transition: background-color .16s ease, border-color .16s ease, transform .16s ease; }
+    .community-cta { min-height: 54px; padding: 12px 11px; border: 1px solid var(--yellow); border-radius: var(--control-radius); display: grid; place-items: center; background: var(--yellow); color: var(--ink); text-align: center; text-decoration: none; transition: background-color .16s ease, border-color .16s ease, transform .16s ease; }
     .community-cta:hover { background: var(--yellow-hover); border-color: var(--yellow-hover); }
     .community-cta:active { transform: translateY(1px); }
     .community-cta:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
-    .community-cta strong { font-size: 14px; line-height: 1.25; }
-    .community-cta span { font-size: 10px; line-height: 1.4; }
+    .community-cta strong { font-size: 12px; line-height: 1.35; white-space: nowrap; }
+    .community-note { margin: 10px 1px 0; color: var(--muted); font-size: 11px; line-height: 1.65; }
     .notice-list { margin-top: 18px; border-block: 1px solid var(--line); }
     .notice-item { padding: 15px 0; }
     .notice-item + .notice-item { border-top: 1px solid var(--line); }
     .notice-item strong { font-size: 12px; line-height: 1.3; }
     .notice-item p { margin: 7px 0 0; color: var(--muted); font-size: 11px; line-height: 1.6; }
+    .notice-link { display: inline-flex; margin-top: 9px; color: #6d5300; font-size: 11px; line-height: 1.4; font-weight: 720; text-underline-offset: 3px; }
+    .notice-link:hover { color: var(--ink); }
+    .notice-link:focus-visible { outline: 2px solid var(--ink); outline-offset: 2px; }
     .topbar { min-height: 64px; display: flex; align-items: center; justify-content: space-between; gap: 20px; position: relative; }
     .left-head { display: flex; align-items: center; gap: 12px; min-width: 0; }
     .menu-btn { width: 42px; height: 42px; border: 1px solid var(--line); border-radius: var(--control-radius); display: none; place-items: center; background: var(--panel-raised); font-size: 20px; line-height: 1; font-weight: 800; transition: background-color .16s ease, border-color .16s ease; }
@@ -299,25 +300,22 @@
     </section>
     </section>
 
-    <aside class="message-sidebar" aria-labelledby="messageTitle">
+    <aside class="message-sidebar" aria-label="社群与跟单说明">
       <section class="message-board">
-        <div class="message-head">
-          <h2 id="messageTitle">AlphaFox 社群</h2>
-        </div>
-        <p class="message-intro">不只看收益曲线，也聊仓位、节奏和风险。进群一起跟踪带单员的真实变化。</p>
-
-        <a class="community-cta" href="https://t.me/+Ic6T-RcW-MxmNTIx" target="_blank" rel="noopener noreferrer" aria-label="加入我们TG，一起交流致富">
-          <strong>加入我们TG，一起交流致富</strong>
+        <a class="community-cta" href="https://t.me/+Ic6T-RcW-MxmNTIx" target="_blank" rel="noopener noreferrer" aria-label="加入 TG 社群，一起讨论跟单与行情">
+          <strong>加入 TG 社群，一起讨论跟单与行情</strong>
         </a>
+        <p class="community-note">不只看收益率，也聊仓位、节奏、风险，进群一起跟踪带单员的实时变化。</p>
 
         <div class="notice-list" aria-label="社群注意事项">
           <div class="notice-item">
-            <strong>好成绩，马上上榜</strong>
-            <p>我们会实时更新带单员榜单，表现优质、收益率领先的带单员都会及时补进来。</p>
+            <strong>发现优质带单员，欢迎推荐</strong>
+            <p>如果你发现收益率领先、表现稳定的带单员，可以在 TG 私信 @Bennett_fight，我们会评估后补充到看板中。</p>
           </div>
           <div class="notice-item">
-            <strong>名额有限，手慢无</strong>
-            <p>官方每位带单员的跟单名额有限。想要 1:1 跟单，欢迎加入社群，或者直接注册 AlphaFox 开始跟单。</p>
+            <strong>想要 1:1 跟单</strong>
+            <p>想要 1:1 跟单的用户，可以点击下方链接注册 AlphaFox Lite 版本，开始跟踪和跟单。</p>
+            <a class="notice-link" href="https://lite.alphafox.app/zh/register?ref=WAYTOWEB4" target="_blank" rel="noopener noreferrer">注册 AlphaFox Lite</a>
           </div>
         </div>
       </section>
