@@ -46,10 +46,6 @@ const traders = [
     label: "鎏渊"
   },
   {
-    portfolioId: "5121666018948220416",
-    label: "趋势交易王"
-  },
-  {
     portfolioId: "5175036213074191105",
     label: "如何设置低于10万U不能跟我的单"
   },
